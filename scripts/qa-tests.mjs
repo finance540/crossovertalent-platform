@@ -59,6 +59,7 @@ includes('admin', /resend-verification/, 'admin verification resend exists');
 includes('company', /company_profile/, 'company profile route exists');
 includes('company', /MAX_LOGO_BYTES/, 'company logo upload validation exists');
 includes('lib', /createClient\(base, key/, 'Supabase Storage client is used for uploads');
+includes('lib', /createBucket\(bucket, config\)/, 'required Supabase buckets are created when missing');
 includes('lib', /download\(objectPath\)/, 'Supabase Storage upload verification exists');
 includes('lib', /allowStorageFallback/, 'production upload fallback gate exists');
 includes('company', /Logo upload failed/, 'logo upload fails clearly when production storage fails');

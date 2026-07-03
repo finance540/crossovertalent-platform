@@ -366,6 +366,34 @@ function supabaseStorageBase(bucket, objectPath = '') {
 
 let supabaseStorageClient;
 
+const STORAGE_BUCKET_CONFIG = {
+  'crossover-cvs-production': {
+    public: false,
+    fileSizeLimit: 5_242_880,
+    allowedMimeTypes: [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain'
+    ]
+  },
+  'crossover-job-descriptions-production': {
+    public: false,
+    fileSizeLimit: 5_242_880,
+    allowedMimeTypes: [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain'
+    ]
+  },
+  'crossover-company-logos-production': {
+    public: true,
+    fileSizeLimit: 2_097_152,
+    allowedMimeTypes: ['image/png', 'image/jpeg', 'image/webp']
+  }
+};
+
 function supabaseAdminStorage() {
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '');
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -382,9 +410,25 @@ function supabaseAdminStorage() {
   return supabaseStorageClient;
 }
 
+function isMissingBucketError(error) {
+  const value = `${error?.message || ''} ${error?.name || ''}`.toLowerCase();
+  return value.includes('bucket not found') || value.includes('not found');
+}
+
+async function ensureSupabaseBucket(client, bucket) {
+  const config = STORAGE_BUCKET_CONFIG[bucket];
+  if (!config) return;
+  const current = await client.storage.getBucket(bucket);
+  if (!current.error) return;
+  if (!isMissingBucketError(current.error)) throw new Error(`Supabase Storage bucket check failed: ${current.error.message}`);
+  const created = await client.storage.createBucket(bucket, config);
+  if (created.error && !/already exists/i.test(created.error.message || '')) throw new Error(`Supabase Storage bucket creation failed: ${created.error.message}`);
+}
+
 export async function uploadPrivateFile({ bucket, objectPath, buffer, contentType = 'application/octet-stream', metadata = {} }) {
   if (!bucket || !objectPath) throw new Error('File upload target is missing');
   const client = supabaseAdminStorage();
+  await ensureSupabaseBucket(client, bucket);
   const { error } = await client.storage.from(bucket).upload(objectPath, buffer, {
     contentType,
     upsert: true,
