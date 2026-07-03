@@ -1,0 +1,16 @@
+node_modules
+.vercel
+.env*
+!.env.example
+.home
+.cache
+.config
+.agents
+playwright-report
+test-results
+work
+*.swp
+
+/generated/prisma
+supabase/.temp
+skills-lock.json

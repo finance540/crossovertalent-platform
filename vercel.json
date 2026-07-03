@@ -1,0 +1,30 @@
+{
+  "outputDirectory": "outputs",
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" },
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' https://www.googletagmanager.com https://app.posthog.com https://browser.sentry-cdn.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.supabase.co; connect-src 'self' https://api.openai.com https://api.resend.com https://*.supabase.co https://app.posthog.com https://*.sentry.io https://www.google-analytics.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" },
+        { "key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains" }
+      ]
+    }
+  ],
+  "rewrites": [
+    { "source": "/", "destination": "/index.html" },
+    { "source": "/help", "destination": "/help.html" },
+    { "source": "/terms", "destination": "/terms.html" },
+    { "source": "/privacy", "destination": "/privacy.html" },
+    { "source": "/cookies", "destination": "/cookies.html" },
+    { "source": "/contact", "destination": "/contact.html" },
+    { "source": "/robots.txt", "destination": "/robots.txt" },
+    { "source": "/sitemap.xml", "destination": "/sitemap.xml" },
+    { "source": "/styles.css", "destination": "/styles.css" },
+    { "source": "/app.js", "destination": "/app.js" }
+  ],
+  "functions": {
+    "api/*.js": { "maxDuration": 10 }
+  }
+}

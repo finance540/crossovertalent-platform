@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://crossovertalent.asia/sitemap.xml

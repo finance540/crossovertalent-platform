@@ -1,0 +1,29 @@
+{
+  "name": "crossover-talent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check outputs/app.js && node --check api/auth.js && node --check api/jobs.js && node --check api/applications.js && node --check api/reviews.js && node --check api/assist.js && node --check api/candidate.js && node --check api/admin.js && node --check api/company.js && node --check api/verify.js && node --check api/salary-signals.js && node --check api/telemetry.js && node --check api/feedback.js && node --check api/email-templates.js && node --check api/health.js && node --check api/ready.js && node --check scripts/qa-tests.mjs && node --check scripts/staging-preflight.mjs && node --check scripts/staging-seed.mjs",
+    "lint": "npm run check",
+    "typecheck": "npm run check",
+    "build": "npm run check",
+    "test": "node scripts/qa-tests.mjs",
+    "test:e2e": "playwright test",
+    "staging:preflight": "node scripts/staging-preflight.mjs",
+    "staging:seed": "node scripts/staging-seed.mjs"
+  },
+  "dependencies": {
+    "@supabase/server": "^1.3.0",
+    "@supabase/ssr": "^0.12.0",
+    "@supabase/supabase-js": "^2.110.0",
+    "@vercel/blob": "^2.4.0",
+    "mammoth": "^1.12.0",
+    "pdf-parse": "^2.4.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "prisma": "^7.8.0",
+    "vercel": "^50.41.0"
+  }
+}

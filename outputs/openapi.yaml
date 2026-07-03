@@ -1,0 +1,363 @@
+openapi: 3.1.0
+info:
+  title: CrossOver Talent API
+  version: "1.0.0"
+  description: API contract for CrossOver Talent - Impact Career Intelligence.
+servers:
+  - url: https://crossovertalent.asia
+    description: Production
+  - url: https://build-me-a-simple-website-where.vercel.app
+    description: Current Vercel deployment
+tags:
+  - name: Authentication
+  - name: Candidate
+  - name: Company
+  - name: Jobs
+  - name: Applications
+  - name: Reviews
+  - name: Salary Signals
+  - name: AI
+  - name: Admin
+  - name: System
+paths:
+  /api/auth:
+    get:
+      tags: [Authentication]
+      summary: Get current employer session
+      responses:
+        "200": { description: Employer session }
+        "401": { description: Not signed in }
+    post:
+      tags: [Authentication]
+      summary: Employer authentication actions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  enum: [register, login, resend-verification, request-password-reset, reset-password]
+                company: { type: string }
+                email: { type: string, format: email }
+                password: { type: string }
+                token: { type: string }
+      responses:
+        "200": { description: Auth action completed }
+        "202": { description: Verification required }
+        "400": { description: Validation error }
+        "401": { description: Invalid credentials }
+        "403": { description: Email verification required or account disabled }
+    delete:
+      tags: [Authentication]
+      summary: Employer logout
+      responses:
+        "200": { description: Logged out }
+  /api/candidate:
+    get:
+      tags: [Candidate]
+      summary: Get candidate profile and applications
+      responses:
+        "200": { description: Candidate dashboard payload }
+        "401": { description: Candidate sign in required }
+    post:
+      tags: [Candidate]
+      summary: Candidate account and dashboard actions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  enum: [register, login, resend-verification, request-password-reset, reset-password, save-job, unsave-job, profile, ai-resume, ai-chat]
+                email: { type: string, format: email }
+                password: { type: string }
+                name: { type: string }
+                linkedin: { type: string }
+                jobId: { type: string }
+                resume: { type: string }
+                preferences:
+                  type: object
+      responses:
+        "200": { description: Candidate action completed }
+        "202": { description: Verification required }
+        "400": { description: Validation error }
+        "401": { description: Invalid credentials or not signed in }
+    delete:
+      tags: [Candidate]
+      summary: Candidate logout
+      responses:
+        "200": { description: Logged out }
+  /api/verify:
+    get:
+      tags: [Authentication]
+      summary: Verify email token
+      parameters:
+        - in: query
+          name: token
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Email verified }
+        "404": { description: Token not found }
+  /api/company:
+    get:
+      tags: [Company]
+      summary: Get employer company profile
+      responses:
+        "200": { description: Company profile }
+        "401": { description: Employer sign in required }
+    post:
+      tags: [Company]
+      summary: Create company profile
+      requestBody:
+        $ref: "#/components/requestBodies/CompanyProfile"
+      responses:
+        "200": { description: Company profile saved }
+    patch:
+      tags: [Company]
+      summary: Update company profile and logo
+      requestBody:
+        $ref: "#/components/requestBodies/CompanyProfile"
+      responses:
+        "200": { description: Company profile updated }
+  /api/jobs:
+    get:
+      tags: [Jobs]
+      summary: List employer jobs or public active jobs
+      parameters:
+        - in: query
+          name: public
+          schema: { type: string, enum: ["1"] }
+        - in: query
+          name: company
+          schema: { type: string }
+      responses:
+        "200": { description: Jobs list }
+    post:
+      tags: [Jobs]
+      summary: Create job
+      requestBody:
+        $ref: "#/components/requestBodies/Job"
+      responses:
+        "201": { description: Job created }
+    patch:
+      tags: [Jobs]
+      summary: Edit job or publish/unpublish job
+      requestBody:
+        $ref: "#/components/requestBodies/JobPatch"
+      responses:
+        "200": { description: Job updated }
+    delete:
+      tags: [Jobs]
+      summary: Delete job
+      parameters:
+        - in: query
+          name: id
+          schema: { type: string }
+      responses:
+        "200": { description: Job deleted }
+  /api/applications:
+    get:
+      tags: [Applications]
+      summary: Employer list of applications
+      responses:
+        "200": { description: Applications list }
+    post:
+      tags: [Applications]
+      summary: Submit application
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [jobId, name, email, coverLetter]
+              properties:
+                jobId: { type: string }
+                name: { type: string }
+                email: { type: string, format: email }
+                phone: { type: string }
+                location: { type: string }
+                linkedin: { type: string }
+                coverLetter: { type: string }
+                cvAttachment: { type: object }
+                cvText: { type: string }
+                revisedCv: { type: string }
+      responses:
+        "201": { description: Application submitted }
+        "409": { description: Duplicate application }
+    patch:
+      tags: [Applications]
+      summary: Employer status update or candidate withdrawal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id: { type: string }
+                status:
+                  type: string
+                  enum: [applied, shortlisted, interview, offered, rejected, hired, withdrawn]
+                action:
+                  type: string
+                  enum: [withdraw]
+      responses:
+        "200": { description: Application updated }
+  /api/reviews:
+    get:
+      tags: [Reviews]
+      summary: List public reviews or current user's reviews
+      parameters:
+        - in: query
+          name: mine
+          schema: { type: string, enum: ["1"] }
+      responses:
+        "200": { description: Reviews list }
+    post:
+      tags: [Reviews]
+      summary: Create company review
+      responses:
+        "201": { description: Review created }
+    patch:
+      tags: [Reviews]
+      summary: Edit own review or moderate as admin
+      responses:
+        "200": { description: Review updated }
+    delete:
+      tags: [Reviews]
+      summary: Delete own review or admin delete
+      responses:
+        "200": { description: Review deleted }
+  /api/salary-signals:
+    get:
+      tags: [Salary Signals]
+      summary: List salary signals and aggregates
+      responses:
+        "200": { description: Salary signals and aggregates }
+    post:
+      tags: [Salary Signals]
+      summary: Submit salary signal
+      responses:
+        "201": { description: Salary signal created }
+    delete:
+      tags: [Salary Signals]
+      summary: Delete own salary signal
+      responses:
+        "200": { description: Salary signal deleted }
+  /api/assist:
+    post:
+      tags: [AI]
+      summary: Document parsing, JD generation, CV revision, LinkedIn URL parse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  enum: [parse-document, generate-job-description, revise-cv, parse-linkedin]
+                file: { type: object }
+      responses:
+        "200": { description: Assistant result }
+        "400": { description: Validation error }
+        "422": { description: Document parsed poorly }
+  /api/admin:
+    get:
+      tags: [Admin]
+      summary: Admin dashboard payload
+      responses:
+        "200": { description: Admin dashboard data }
+    post:
+      tags: [Admin]
+      summary: Admin registration/login/password actions
+      responses:
+        "200": { description: Admin action completed }
+        "202": { description: Verification required }
+    patch:
+      tags: [Admin]
+      summary: User, review, or job moderation
+      responses:
+        "200": { description: Admin moderation completed }
+    delete:
+      tags: [Admin]
+      summary: Admin logout
+      responses:
+        "200": { description: Logged out }
+  /api/telemetry:
+    post:
+      tags: [System]
+      summary: Client telemetry event
+      responses:
+        "200": { description: Telemetry accepted }
+  /api/health:
+    get:
+      tags: [System]
+      summary: Health check
+      responses:
+        "200": { description: Service healthy }
+  /api/ready:
+    get:
+      tags: [System]
+      summary: Readiness check
+      responses:
+        "200": { description: Service ready }
+        "503": { description: Service not ready }
+components:
+  requestBodies:
+    CompanyProfile:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              company: { type: string }
+              website: { type: string }
+              sector: { type: string }
+              location: { type: string }
+              description: { type: string }
+              logo: { type: object }
+    Job:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [title, department, location, type, description]
+            properties:
+              title: { type: string }
+              department: { type: string }
+              location: { type: string }
+              type: { type: string }
+              salary: { type: string }
+              sector: { type: string }
+              experience: { type: string }
+              impactArea: { type: string }
+              description: { type: string }
+              sourceAttachment: { type: object }
+              sourceText: { type: string }
+              aiInputs: { type: object }
+    JobPatch:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              id: { type: string }
+              status: { type: string, enum: [active, closed] }
+              title: { type: string }
+              department: { type: string }
+              location: { type: string }
+              type: { type: string }
+              description: { type: string }
