@@ -646,6 +646,57 @@ Release gate remains:
 
 **NO-GO - Vercel Git connection, Git-based production deployment, API validation, Supabase validation, and security validation are still pending.**
 
+## Vercel Hobby Function Limit Remediation: 2026-07-04
+
+Result: **PASS - DEPLOYMENT BLOCKER RESOLVED**
+
+Root cause:
+
+The Git-connected production build reached the current codebase but exceeded the Vercel Hobby Serverless Function count limit.
+
+Exact error:
+
+```text
+No more than 12 Serverless Functions can be added to a Deployment on the Hobby plan. Create a team (Pro plan) to deploy more.
+```
+
+Remediation:
+
+- Consolidated lightweight utility/support endpoints into `api/ops.js`.
+- Preserved public URLs with Vercel rewrites.
+- Kept business-critical routes standalone.
+- Reduced `/api` JS file count from 16 to 11 including `_lib.js`.
+
+Production deployment:
+
+| Check | Result |
+|---|---:|
+| Commit SHA | `b3822b0919caec2b095dd3962f8fa4323faee4de` |
+| Deployment ID | `dpl_DRYZ1RgjWSVApGVYjMCV57mJ94BD` |
+| Deployment URL | `https://build-me-a-simple-website-where-ckksltfd9-cot-s-projects1.vercel.app` |
+| Ready state | `READY` |
+| Vercel function limit | PASS |
+
+Production endpoint validation:
+
+| Endpoint | Result |
+|---|---:|
+| `/api/health` | PASS, HTTP 200 |
+| `/api/ready` | PASS, HTTP 200 |
+| `/api/company` | PASS, route exists; HTTP 401 unauthenticated |
+| `/api/verify` | PASS, route exists; HTTP 400 without token |
+| `/api/feedback` | PASS, route exists; HTTP 401 unauthenticated admin GET |
+| `/api/telemetry` | PASS, HTTP 202 for valid POST |
+| `/api/email-templates` | PASS, HTTP 200 |
+
+Supabase readiness:
+
+`/api/ready` returned `ok: true` with `storage`, `database`, `sessionSecret`, `appUrl`, `cvBucket`, `jdBucket`, `logoBucket`, and `fileBucket` all true.
+
+Current gate:
+
+**GO for deployment blocker resolution. NO-GO for public launch until full smoke/security validation and DNS approval are complete.**
+
 ## Required Correction
 
 Add the required variables to the exact project:

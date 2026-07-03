@@ -2,7 +2,7 @@
 
 Date: 2026-07-04
 
-Status: **Pending production redeploy**
+Status: **Production deployment validation passed for function-limit remediation**
 
 ## Deployment Context
 
@@ -11,6 +11,7 @@ Status: **Pending production redeploy**
 | GitHub repository | `finance540/crossovertalent-platform` |
 | Vercel Git connection | PASS |
 | Production branch | `main` |
+| Deployed commit SHA | `b3822b0919caec2b095dd3962f8fa4323faee4de` |
 | Production Supabase project | `hntvcqahoseizmgswohq` |
 | DNS moved | No |
 
@@ -30,41 +31,61 @@ Status: **Pending production redeploy**
 
 | Check | Result |
 |---|---:|
-| Production redeploy triggered | Pending |
-| Deployment succeeded | Pending |
-| Deployment commit SHA | Pending |
-| Vercel function limit resolved | Pending |
+| Production redeploy triggered | PASS |
+| Deployment succeeded | PASS |
+| Deployment ID | `dpl_DRYZ1RgjWSVApGVYjMCV57mJ94BD` |
+| Deployment URL | `https://build-me-a-simple-website-where-ckksltfd9-cot-s-projects1.vercel.app` |
+| Deployment commit SHA | `b3822b0919caec2b095dd3962f8fa4323faee4de` |
+| Vercel function limit resolved | PASS |
+| Ready state | `READY` |
 
 ## Production API Validation
 
 | Endpoint | Expected | Result |
 |---|---|---:|
-| `/api/health` | HTTP 200 | Pending |
-| `/api/ready` | HTTP 200 | Pending |
-| `/api/company` | Exists; auth error acceptable without session | Pending |
-| `/api/verify` | Exists; invalid/missing token validation acceptable | Pending |
-| `/api/feedback` | Exists; auth/method behavior acceptable | Pending |
-| `/api/telemetry` | Exists; method/origin behavior acceptable | Pending |
+| `/api/health` | HTTP 200 | PASS |
+| `/api/ready` | HTTP 200 | PASS |
+| `/api/company` | Exists; auth error acceptable without session | PASS, HTTP 401 |
+| `/api/verify` | Exists; invalid/missing token validation acceptable | PASS, HTTP 400 |
+| `/api/feedback` | Exists; auth/method behavior acceptable | PASS, HTTP 401 for unauthenticated admin GET |
+| `/api/telemetry` | Exists; method/origin behavior acceptable | PASS, HTTP 405 for GET and HTTP 202 for valid POST |
+| `/api/email-templates` | Exists; template metadata returned | PASS, HTTP 200 |
 
 ## Production Supabase Validation
 
 | Check | Expected | Result |
 |---|---|---:|
-| Supabase project ref | `hntvcqahoseizmgswohq` | Pending |
-| Storage driver | `supabase` | Pending |
-| Blob fallback | Disabled | Pending |
-| Production bucket names | Production CV/JD/logo buckets | Pending |
-| Database writes | Production Supabase, not staging | Pending |
+| Supabase project ref | `hntvcqahoseizmgswohq` | PASS by configured production env and readiness database/storage checks |
+| Storage driver | `supabase` | PASS |
+| Blob fallback | Disabled | PASS by `STORAGE_DRIVER=supabase` and `/api/ready` checks |
+| Production bucket names | Production CV/JD/logo buckets | PASS |
+| Database writes | Production Supabase, not staging | PASS for telemetry POST via `/api/telemetry` |
+
+Readiness response:
+
+```json
+{
+  "ok": true,
+  "status": "ready",
+  "checks": {
+    "storage": true,
+    "database": true,
+    "sessionSecret": true,
+    "appUrl": true,
+    "cvBucket": true,
+    "jdBucket": true,
+    "logoBucket": true,
+    "fileBucket": true
+  }
+}
+```
 
 ## Release Gate
 
-Current decision: **NO-GO**
+Current decision: **GO for deployment blocker resolution**
 
 Remaining blockers:
 
-1. Remediation commit must be pushed.
-2. Production deployment must complete successfully.
-3. Production API validation must pass.
-4. Production Supabase runtime validation must pass.
-5. Smoke/security validation must pass.
-6. DNS must remain unchanged until all checks pass.
+1. Full production smoke/security validation should run before public launch.
+2. DNS must remain unchanged until product owner approves the next gate.
+3. `crossovertalent.asia` was aliased in Vercel output, but DNS was not changed by this task.
