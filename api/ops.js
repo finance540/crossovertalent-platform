@@ -63,6 +63,14 @@ function publicMessage(role) {
   return `${role === 'employer' ? 'Employer' : role === 'admin' ? 'Admin' : 'Job seeker'} email verified. You can now sign in.`;
 }
 
+function supabaseProjectRef() {
+  try {
+    return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || '').hostname.split('.')[0] || '';
+  } catch {
+    return '';
+  }
+}
+
 async function requireAdmin(request, response) {
   const session = readSession(request);
   if (!session || session.role !== 'admin') {
@@ -90,9 +98,11 @@ async function health(request, response) {
 async function ready(request, response) {
   if (request.method !== 'GET') return response.status(405).json({ error: 'Method not allowed' });
   const isProduction = process.env.VERCEL_ENV === 'production';
+  const expectedProductionRef = process.env.SUPABASE_EXPECTED_PROJECT_REF || 'hntvcqahoseizmgswohq';
   const checks = {
     storage: false,
     database: false,
+    supabaseProject: !isProduction || supabaseProjectRef() === expectedProductionRef,
     sessionSecret: Boolean(process.env.SESSION_SECRET || process.env.VERCEL_ENV !== 'production'),
     appUrl: Boolean(process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL),
     cvBucket: !isProduction || process.env.SUPABASE_CV_BUCKET === 'crossover-cvs-production',

@@ -34,6 +34,8 @@ includes('admin', /failedLogins/, 'admin failed login metrics exist');
 includes('app', /Reliability and usage/, 'admin operational dashboard renders reliability metrics');
 includes('admin', /supportTickets/, 'admin feedback inbox data exists');
 includes('ops', /support_ticket/, 'support ticket API stores feedback records');
+includes('ops', /hntvcqahoseizmgswohq/, 'production readiness checks expected Supabase project ref');
+includes('ops', /supabaseProject/, 'readiness includes Supabase project validation');
 includes('html', /id="support-widget-button"/, 'support widget button exists');
 includes('html', /id="support-form"/, 'support form exists');
 includes('app', /support-dialog/, 'support widget is wired');
