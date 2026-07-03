@@ -1,4 +1,4 @@
-import { IMPACT_SECTORS, auditLog, assertSameOrigin, ensureStorage, forbidden, methodNotAllowed, productEvent, readRecord, requireEmployerSession, serverError, setSecurityHeaders, uploadPrivateFile, writeRecord } from './_lib.js';
+import { IMPACT_SECTORS, allowStorageFallback, auditLog, assertSameOrigin, ensureStorage, forbidden, methodNotAllowed, productEvent, readRecord, requireEmployerSession, serverError, setSecurityHeaders, uploadPrivateFile, writeRecord } from './_lib.js';
 import { randomUUID } from 'node:crypto';
 
 const MAX_LOGO_BYTES = 750_000;
@@ -46,6 +46,7 @@ async function cleanLogo(logo, session) {
     await uploadPrivateFile({ bucket, objectPath, buffer, contentType: type, metadata: { companyId: session.companyId, name, size } });
     return { name, type, size, bucket, objectPath, publicUrl: publicStorageUrl(bucket, objectPath), updated_at: new Date().toISOString() };
   } catch (error) {
+    if (!allowStorageFallback()) throw new Error(`Logo upload failed: ${error.message}`);
     await auditLog('logo.inline_fallback', { actorEmail: session.email, entityType: 'company_profile', entityId: session.companyId, metadata: { error: error.message } });
     return { name, type, size, dataUrl: `data:${type};base64,${data}`, storageFallback: true, updated_at: new Date().toISOString() };
   }

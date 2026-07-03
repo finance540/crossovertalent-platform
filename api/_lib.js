@@ -1,4 +1,5 @@
 import { del, get, list, put } from '@vercel/blob';
+import { createClient } from '@supabase/supabase-js';
 import { createHash, createHmac, timingSafeEqual, randomBytes, randomUUID, scrypt as scryptCallback } from 'node:crypto';
 import { promisify } from 'node:util';
 
@@ -22,6 +23,10 @@ function configuredStorageDriver() {
   const requested = (process.env.STORAGE_DRIVER || '').toLowerCase();
   if (requested) return requested;
   return process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY ? 'supabase' : 'blob';
+}
+
+export function allowStorageFallback() {
+  return configuredStorageDriver() !== 'supabase' || (process.env.VERCEL_ENV !== 'production' && process.env.NODE_ENV !== 'production');
 }
 
 export function ensureStorage() {
@@ -359,40 +364,46 @@ function supabaseStorageBase(bucket, objectPath = '') {
   return new URL(`/storage/v1/object/${bucket}/${objectPath}`.replace(/\/$/, ''), base);
 }
 
+let supabaseStorageClient;
+
+function supabaseAdminStorage() {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '');
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base || !key) throw new Error('Supabase storage is not configured');
+  if (!supabaseStorageClient) {
+    supabaseStorageClient = createClient(base, key, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false
+      }
+    });
+  }
+  return supabaseStorageClient;
+}
+
 export async function uploadPrivateFile({ bucket, objectPath, buffer, contentType = 'application/octet-stream', metadata = {} }) {
-  const url = supabaseStorageBase(bucket, objectPath);
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-      apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-      'content-type': contentType,
-      'x-upsert': 'true'
-    },
-    body: buffer
+  if (!bucket || !objectPath) throw new Error('File upload target is missing');
+  const client = supabaseAdminStorage();
+  const { error } = await client.storage.from(bucket).upload(objectPath, buffer, {
+    contentType,
+    upsert: true,
+    cacheControl: '3600'
   });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || data.error || 'File upload failed');
+  if (error) throw new Error(`Supabase Storage upload failed: ${error.message}`);
+
+  const downloaded = await client.storage.from(bucket).download(objectPath);
+  if (downloaded.error) throw new Error(`Supabase Storage upload verification failed: ${downloaded.error.message}`);
+
   await auditLog('file.uploaded', { entityType: 'uploaded_file', entityId: objectPath, metadata: { bucket, ...metadata } });
   return { bucket, objectPath };
 }
 
 export async function createSignedFileUrl(bucket, objectPath, expiresIn = 600) {
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '');
-  if (!base || !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error('Supabase storage is not configured');
-  const url = new URL(`/storage/v1/object/sign/${bucket}/${objectPath}`, base);
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-      apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-      'content-type': 'application/json'
-    },
-    body: JSON.stringify({ expiresIn })
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || data.error || 'Signed URL failed');
-  return { signedUrl: data.signedURL || data.signedUrl || data.url, expiresIn };
+  const client = supabaseAdminStorage();
+  const { data, error } = await client.storage.from(bucket).createSignedUrl(objectPath, expiresIn);
+  if (error) throw new Error(`Signed URL failed: ${error.message}`);
+  return { signedUrl: data?.signedUrl, expiresIn };
 }
 
 export async function hashPassword(password) {

@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises';
 const files = {
   app: await readFile('outputs/app.js', 'utf8'),
   html: await readFile('outputs/index.html', 'utf8'),
+  lib: await readFile('api/_lib.js', 'utf8'),
+  assist: await readFile('api/assist.js', 'utf8'),
   auth: await readFile('api/auth.js', 'utf8'),
   jobs: await readFile('api/jobs.js', 'utf8'),
   applications: await readFile('api/applications.js', 'utf8'),
@@ -56,6 +58,11 @@ includes('candidate', /resend-verification/, 'candidate verification resend exis
 includes('admin', /resend-verification/, 'admin verification resend exists');
 includes('company', /company_profile/, 'company profile route exists');
 includes('company', /MAX_LOGO_BYTES/, 'company logo upload validation exists');
+includes('lib', /createClient\(base, key/, 'Supabase Storage client is used for uploads');
+includes('lib', /download\(objectPath\)/, 'Supabase Storage upload verification exists');
+includes('lib', /allowStorageFallback/, 'production upload fallback gate exists');
+includes('company', /Logo upload failed/, 'logo upload fails clearly when production storage fails');
+includes('assist', /storageFallback/, 'upload fallback state is still surfaced where allowed');
 includes('app', /history\.replaceState\(\{\}, '', '\/\?dashboard=1'\)/, 'employer redirects to dashboard');
 includes('app', /history\.replaceState\(\{\}, '', '\/\?candidate=dashboard'\)/, 'candidate redirects to dashboard');
 

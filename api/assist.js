@@ -1,4 +1,4 @@
-import { auditLog, assertSameOrigin, ensureStorage, forbidden, openAiChat, productEvent, rateLimit, requireSession, serverError, setSecurityHeaders, stableHash, tooManyRequests, uploadPrivateFile, writeRecord } from './_lib.js';
+import { allowStorageFallback, auditLog, assertSameOrigin, ensureStorage, forbidden, openAiChat, productEvent, rateLimit, requireSession, serverError, setSecurityHeaders, stableHash, tooManyRequests, uploadPrivateFile, writeRecord } from './_lib.js';
 import mammoth from 'mammoth';
 import { randomUUID } from 'node:crypto';
 
@@ -106,6 +106,7 @@ async function storeUploadedFile(file = {}, buffer, parsedText = '') {
     await writeRecord(`uploaded-files/${id}.json`, metadata);
     return metadata;
   } catch (error) {
+    if (!allowStorageFallback()) throw new Error(`File upload failed: ${error.message}`);
     await auditLog('file.storage_fallback', { entityType: 'uploaded_file', metadata: { name: clean(file.name), error: error.message } });
     return { id, kind, fileName: clean(file.name), fileType: clean(file.type), fileSize: Number(file.size || buffer.length), storageFallback: true, virusScanStatus: 'not_configured' };
   }
