@@ -13,6 +13,12 @@
     }
   ],
   "rewrites": [
+    { "source": "/api/health", "destination": "/api/ops?route=health" },
+    { "source": "/api/ready", "destination": "/api/ops?route=ready" },
+    { "source": "/api/verify", "destination": "/api/ops?route=verify" },
+    { "source": "/api/feedback", "destination": "/api/ops?route=feedback" },
+    { "source": "/api/telemetry", "destination": "/api/ops?route=telemetry" },
+    { "source": "/api/email-templates", "destination": "/api/ops?route=email-templates" },
     { "source": "/", "destination": "/index.html" },
     { "source": "/help", "destination": "/help.html" },
     { "source": "/terms", "destination": "/terms.html" },

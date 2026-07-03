@@ -9,13 +9,11 @@ const files = {
   applications: await readFile('api/applications.js', 'utf8'),
   admin: await readFile('api/admin.js', 'utf8'),
   company: await readFile('api/company.js', 'utf8'),
-  verify: await readFile('api/verify.js', 'utf8'),
+  ops: await readFile('api/ops.js', 'utf8'),
   candidate: await readFile('api/candidate.js', 'utf8'),
   reviews: await readFile('api/reviews.js', 'utf8'),
   salaries: await readFile('api/salary-signals.js', 'utf8')
 };
-files.feedback = await readFile('api/feedback.js', 'utf8');
-files.templates = await readFile('api/email-templates.js', 'utf8');
 files.vercel = await readFile('vercel.json', 'utf8');
 files.seed = await readFile('scripts/staging-seed.mjs', 'utf8');
 
@@ -33,7 +31,7 @@ includes('admin', /systemHealth/, 'admin operational system health metrics exist
 includes('admin', /failedLogins/, 'admin failed login metrics exist');
 includes('app', /Reliability and usage/, 'admin operational dashboard renders reliability metrics');
 includes('admin', /supportTickets/, 'admin feedback inbox data exists');
-includes('feedback', /support_ticket/, 'support ticket API stores feedback records');
+includes('ops', /support_ticket/, 'support ticket API stores feedback records');
 includes('html', /id="support-widget-button"/, 'support widget button exists');
 includes('html', /id="support-form"/, 'support form exists');
 includes('app', /support-dialog/, 'support widget is wired');
@@ -49,10 +47,10 @@ includes('html', /application\/ld\+json/, 'structured data exists');
 includes('html', /id="pricing"/, 'pricing placeholders are integrated');
 includes('html', /id="faq"/, 'FAQ content is integrated');
 includes('html', /href="\/privacy\.html"/, 'privacy link exists');
-includes('templates', /applicationStatusChanged/, 'commercial email templates exist');
+includes('ops', /applicationStatusChanged/, 'commercial email templates exist');
 includes('vercel', /sitemap\.xml/, 'sitemap route exists');
 includes('vercel', /robots\.txt/, 'robots route exists');
-includes('verify', /verificationToken/, 'email verification endpoint exists');
+includes('ops', /verificationToken/, 'email verification endpoint exists');
 includes('auth', /resend-verification/, 'employer verification resend exists');
 includes('candidate', /resend-verification/, 'candidate verification resend exists');
 includes('admin', /resend-verification/, 'admin verification resend exists');
