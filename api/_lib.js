@@ -22,17 +22,41 @@ export const IMPACT_SECTORS = [
 function configuredStorageDriver() {
   const requested = (process.env.STORAGE_DRIVER || '').toLowerCase();
   if (requested) return requested;
-  return process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY ? 'supabase' : 'blob';
+  return configuredSupabaseUrl() && configuredSupabaseAdminKey() ? 'supabase' : 'blob';
 }
 
 export function allowStorageFallback() {
   return configuredStorageDriver() !== 'supabase' || (process.env.VERCEL_ENV !== 'production' && process.env.NODE_ENV !== 'production');
 }
 
+export function configuredSupabaseUrl() {
+  return (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '').replace(/\/$/, '');
+}
+
+export function configuredSupabasePublishableKey() {
+  return process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || '';
+}
+
+export function configuredSupabaseAdminKey() {
+  return process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '';
+}
+
+export function isSupabaseJwtKey(key = '') {
+  return String(key).split('.').length === 3;
+}
+
+export function supabaseKeyType(key = '') {
+  const value = String(key);
+  if (value.startsWith('sb_secret_')) return 'secret';
+  if (value.startsWith('sb_publishable_')) return 'publishable';
+  if (isSupabaseJwtKey(value)) return 'legacy_jwt';
+  return value ? 'unknown' : 'missing';
+}
+
 export function ensureStorage() {
   const driver = configuredStorageDriver();
   if (driver === 'supabase') {
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error('Supabase storage is not configured');
+    if (!configuredSupabaseUrl() || !configuredSupabaseAdminKey()) throw new Error('Supabase storage is not configured');
     return;
   }
   if (!process.env.BLOB_READ_WRITE_TOKEN) throw new Error('Storage is not configured');
@@ -81,20 +105,21 @@ export function appUrl(pathname = '/') {
 }
 
 function supabaseUrl(pathname = 'app_records') {
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '');
+  const base = configuredSupabaseUrl();
   if (!base) throw new Error('Supabase storage is not configured');
   return new URL(`/rest/v1/${pathname}`, base);
 }
 
 function supabaseHeaders(extra = {}) {
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const key = configuredSupabaseAdminKey();
   if (!key) throw new Error('Supabase storage is not configured');
-  return {
+  const headers = {
     apikey: key,
-    authorization: `Bearer ${key}`,
     'content-type': 'application/json',
     ...extra
   };
+  if (isSupabaseJwtKey(key)) headers.authorization = `Bearer ${key}`;
+  return headers;
 }
 
 function recordType(value = {}) {
@@ -112,6 +137,13 @@ async function supabaseRequest(url, options = {}) {
     throw error;
   }
   return data;
+}
+
+export async function probeSupabaseDatabase() {
+  const url = supabaseUrl();
+  url.searchParams.set('select', 'path');
+  url.searchParams.set('limit', '1');
+  return supabaseRequest(url, { headers: supabaseHeaders() });
 }
 
 async function readSupabaseRecord(pathname) {
@@ -359,8 +391,8 @@ export async function openAiChat({ system, user, fallback, model = process.env.O
 }
 
 function supabaseStorageBase(bucket, objectPath = '') {
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '');
-  if (!base || !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new Error('Supabase storage is not configured');
+  const base = configuredSupabaseUrl();
+  if (!base || !configuredSupabaseAdminKey()) throw new Error('Supabase storage is not configured');
   return new URL(`/storage/v1/object/${bucket}/${objectPath}`.replace(/\/$/, ''), base);
 }
 
@@ -395,8 +427,8 @@ const STORAGE_BUCKET_CONFIG = {
 };
 
 function supabaseAdminStorage() {
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '');
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const base = configuredSupabaseUrl();
+  const key = configuredSupabaseAdminKey();
   if (!base || !key) throw new Error('Supabase storage is not configured');
   if (!supabaseStorageClient) {
     supabaseStorageClient = createClient(base, key, {

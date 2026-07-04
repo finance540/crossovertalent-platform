@@ -1,4 +1,4 @@
-import { IMPACT_SECTORS, allowStorageFallback, auditLog, assertSameOrigin, ensureStorage, forbidden, methodNotAllowed, productEvent, readRecord, requireEmployerSession, serverError, setSecurityHeaders, uploadPrivateFile, writeRecord } from './_lib.js';
+import { IMPACT_SECTORS, allowStorageFallback, auditLog, assertSameOrigin, configuredSupabaseUrl, ensureStorage, forbidden, methodNotAllowed, productEvent, readRecord, requireEmployerSession, serverError, setSecurityHeaders, uploadPrivateFile, writeRecord } from './_lib.js';
 import { randomUUID } from 'node:crypto';
 
 const MAX_LOGO_BYTES = 750_000;
@@ -23,7 +23,7 @@ function publicProfile(profile = {}, session = {}) {
 }
 
 function publicStorageUrl(bucket, objectPath) {
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '');
+  const base = configuredSupabaseUrl();
   return base ? `${base}/storage/v1/object/public/${bucket}/${objectPath}` : '';
 }
 

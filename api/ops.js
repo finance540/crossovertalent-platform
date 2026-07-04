@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { appUrl, assertSameOrigin, auditLog, ensureStorage, forbidden, listRecords, methodNotAllowed, rateLimit, readRecord, readSession, sendEmail, serverError, setSecurityHeaders, stableHash, tooManyRequests, writeRecord } from './_lib.js';
+import { appUrl, assertSameOrigin, auditLog, configuredSupabaseAdminKey, configuredSupabaseUrl, ensureStorage, forbidden, listRecords, methodNotAllowed, probeSupabaseDatabase, rateLimit, readRecord, readSession, sendEmail, serverError, setSecurityHeaders, stableHash, supabaseKeyType, tooManyRequests, writeRecord } from './_lib.js';
 
 const SUPPORT_TYPES = ['feedback', 'bug', 'support', 'feature'];
 const SUPPORT_PRIORITIES = ['low', 'normal', 'high', 'urgent'];
@@ -65,7 +65,7 @@ function publicMessage(role) {
 
 function supabaseProjectRef() {
   try {
-    return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || '').hostname.split('.')[0] || '';
+    return new URL(configuredSupabaseUrl() || '').hostname.split('.')[0] || '';
   } catch {
     return '';
   }
@@ -110,16 +110,37 @@ async function ready(request, response) {
     logoBucket: !isProduction || process.env.SUPABASE_LOGO_BUCKET === 'crossover-company-logos-production',
     fileBucket: !isProduction || process.env.SUPABASE_FILE_BUCKET === 'crossover-job-descriptions-production'
   };
+  const diagnostics = {
+    supabaseProjectRef: supabaseProjectRef() || 'missing',
+    expectedSupabaseProjectRef: expectedProductionRef,
+    adminKeyType: supabaseKeyType(configuredSupabaseAdminKey())
+  };
   try {
     ensureStorage();
     checks.storage = true;
-    await listRecords('rate-limits/');
+    await probeSupabaseDatabase();
     checks.database = true;
   } catch (error) {
+    const message = String(error.message || '').toLowerCase();
+    const reason = !configuredSupabaseUrl()
+      ? 'missing_supabase_url'
+      : !configuredSupabaseAdminKey()
+        ? 'missing_admin_key'
+        : !checks.supabaseProject
+          ? 'wrong_project_ref'
+          : error.status === 401 || message.includes('invalid api key')
+            ? 'invalid_api_key'
+            : error.status === 403 || message.includes('permission denied') || message.includes('rls')
+              ? 'permission_or_rls_denied'
+              : error.status === 404 || message.includes('not found')
+                ? 'missing_table_or_rest_schema'
+                : 'database_probe_failed';
     return response.status(503).json({
       ok: false,
       status: 'not_ready',
       checks,
+      reason,
+      diagnostics,
       error: error.message === 'Storage is not configured' ? error.message : 'Readiness check failed',
       timestamp: new Date().toISOString()
     });
@@ -129,6 +150,7 @@ async function ready(request, response) {
     ok,
     status: ok ? 'ready' : 'not_ready',
     checks,
+    diagnostics,
     timestamp: new Date().toISOString()
   });
 }

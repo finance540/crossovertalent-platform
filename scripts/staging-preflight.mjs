@@ -19,7 +19,7 @@ url.searchParams.set('limit', '1');
 const response = await fetch(url, {
   headers: {
     apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-    authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`
+    ...(String(process.env.SUPABASE_SERVICE_ROLE_KEY).split('.').length === 3 ? { authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` } : {})
   }
 });
 
