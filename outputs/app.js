@@ -119,6 +119,7 @@ function openAuth(mode = 'login') {
     return;
   }
   setAuthMode(mode);
+  history.pushState({}, '', mode === 'register' ? '/?register=1' : '/?login=1');
   showScreen('auth');
   window.scrollTo(0, 0);
 }
@@ -140,6 +141,7 @@ function openCandidateAuth(mode = 'login') {
     return;
   }
   setCandidateAuthMode(mode);
+  history.pushState({}, '', `/?candidate=${mode === 'register' ? 'register' : 'login'}`);
   showScreen('candidate-auth');
   window.scrollTo(0, 0);
 }
