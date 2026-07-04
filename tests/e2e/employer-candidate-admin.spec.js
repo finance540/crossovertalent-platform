@@ -14,6 +14,173 @@ test.describe.serial('Crossover Talent E2E release candidate workflows', () => {
   let reviewId;
 
   test('employer signup, verification, login, company logo, and job lifecycle', async ({ request, page }) => {
+    const admin = await registerVerifyLogin(request, '/api/admin', {
+      action: 'register',
+      name: `E2E Admin ${stamp}`,
+      email: adminEmail,
+      password
+    });
+    adminCookie = admin.cookie;
+
+    let employer = await api(request, '/api/auth', {
+      method: 'POST',
+      body: {
+        action: 'register',
+        company: `E2E Climate Employer ${stamp}`,
+        email: employerEmail,
+        password
+      }
+    });
+    expect(employer.response.status()).toBe(202);
+    expect(employer.data.employer_status).toBe('pending_review');
+    if (employer.data.verificationUrl) {
+      const verify = await api(request, employer.data.verificationUrl, { cookie: employer.cookie });
+      expect(verify.response.ok()).toBeTruthy();
+    }
+
+    const pendingLogin = await api(request, '/api/auth', {
+      method: 'POST',
+      body: { action: 'login', email: employerEmail, password }
+    });
+    expect(pendingLogin.response.status()).toBe(403);
+    expect(pendingLogin.data.employer_status).toBe('pending_review');
+
+    const approval = await api(request, '/api/admin', {
+      method: 'PATCH',
+      cookie: adminCookie,
+      body: {
+        action: 'employer-approval',
+        email: employerEmail,
+        status: 'approved',
+        company_validation_notes: 'E2E approval validation.'
+      }
+    });
+    expect(approval.response.ok()).toBeTruthy();
+
+    employer = await api(request, '/api/auth', {
+      method: 'POST',
+      body: {
+        action: 'login',
+        email: employerEmail,
+        password
+      }
+    });
+    expect(employer.response.ok()).toBeTruthy();
+    expect(employer.data.user.employer_status).toBe('approved');
+    employerCookie = employer.cookie;
+
+    const rejectedEmail = uniqueEmail('e2e-rejected-employer');
+    const rejected = await api(request, '/api/auth', {
+      method: 'POST',
+      body: {
+        action: 'register',
+        company: `Rejected Climate Employer ${stamp}`,
+        email: rejectedEmail,
+        password
+      }
+    });
+    if (rejected.data.verificationUrl) await api(request, rejected.data.verificationUrl, { cookie: rejected.cookie });
+    const rejectedReview = await api(request, '/api/admin', {
+      method: 'PATCH',
+      cookie: adminCookie,
+      body: {
+        action: 'employer-approval',
+        email: rejectedEmail,
+        status: 'rejected',
+        rejection_reason: 'Company could not be validated.',
+        company_validation_notes: 'E2E rejection validation.'
+      }
+    });
+    expect(rejectedReview.response.ok()).toBeTruthy();
+    const rejectedLogin = await api(request, '/api/auth', {
+      method: 'POST',
+      body: { action: 'login', email: rejectedEmail, password }
+    });
+    expect(rejectedLogin.response.status()).toBe(403);
+    expect(rejectedLogin.data.employer_status).toBe('rejected');
+
+    const suspendedEmail = uniqueEmail('e2e-suspended-employer');
+    const suspended = await api(request, '/api/auth', {
+      method: 'POST',
+      body: {
+        action: 'register',
+        company: `Suspended Climate Employer ${stamp}`,
+        email: suspendedEmail,
+        password
+      }
+    });
+    if (suspended.data.verificationUrl) await api(request, suspended.data.verificationUrl, { cookie: suspended.cookie });
+    const suspendedReview = await api(request, '/api/admin', {
+      method: 'PATCH',
+      cookie: adminCookie,
+      body: {
+        action: 'employer-approval',
+        email: suspendedEmail,
+        status: 'suspended',
+        company_validation_notes: 'E2E suspension validation.'
+      }
+    });
+    expect(suspendedReview.response.ok()).toBeTruthy();
+    const suspendedLogin = await api(request, '/api/auth', {
+      method: 'POST',
+      body: { action: 'login', email: suspendedEmail, password }
+    });
+    expect(suspendedLogin.response.status()).toBe(403);
+    expect(suspendedLogin.data.employer_status).toBe('suspended');
+
+    const nonAdminApproval = await api(request, '/api/admin', {
+      method: 'PATCH',
+      cookie: employerCookie,
+      body: {
+        action: 'employer-approval',
+        email: employerEmail,
+        status: 'approved'
+      }
+    });
+    expect([401, 403]).toContain(nonAdminApproval.response.status());
+
+    const pendingEmail = uniqueEmail('e2e-pending-employer');
+    const pendingEmployer = await api(request, '/api/auth', {
+      method: 'POST',
+      body: {
+        action: 'register',
+        company: `Pending Climate Employer ${stamp}`,
+        email: pendingEmail,
+        password
+      }
+    });
+    if (pendingEmployer.data.verificationUrl) await api(request, pendingEmployer.data.verificationUrl, { cookie: pendingEmployer.cookie });
+    const pendingSession = await api(request, '/api/auth', {
+      method: 'POST',
+      body: { action: 'login', email: pendingEmail, password }
+    });
+    const pendingPost = await api(request, '/api/jobs', {
+      method: 'POST',
+      cookie: pendingSession.cookie,
+      body: {
+        title: 'Should not post',
+        department: 'Climate',
+        location: 'Singapore',
+        type: 'Full-time',
+        sector: 'Climate',
+        description: 'Pending employer should not post.'
+      }
+    });
+    expect(pendingPost.response.status()).toBe(401);
+
+    const providerStatus = await api(request, '/api/auth-provider');
+    expect(providerStatus.response.ok()).toBeTruthy();
+    expect(providerStatus.data.employerApprovalEnforced).toBeTruthy();
+
+    const googleStatus = await api(request, '/api/auth-provider?provider=google&role=employer');
+    expect([302, 503]).toContain(googleStatus.response.status());
+    const phoneStatus = await api(request, '/api/auth-provider', {
+      method: 'POST',
+      body: { action: 'start-phone-otp', role: 'employer', phone: '+6591234567' }
+    });
+    expect([501, 503]).toContain(phoneStatus.response.status());
+
+    /*
     const employer = await registerVerifyLogin(request, '/api/auth', {
       action: 'register',
       company: `E2E Climate Employer ${stamp}`,
@@ -21,6 +188,7 @@ test.describe.serial('Crossover Talent E2E release candidate workflows', () => {
       password
     });
     employerCookie = employer.cookie;
+    */
 
     const logo = Buffer.from('enterprise logo').toString('base64');
     const company = await api(request, '/api/company', {
@@ -193,13 +361,15 @@ test.describe.serial('Crossover Talent E2E release candidate workflows', () => {
   });
 
   test('admin login, review moderation, job moderation, and user management', async ({ request }) => {
-    const admin = await registerVerifyLogin(request, '/api/admin', {
-      action: 'register',
-      name: `E2E Admin ${stamp}`,
-      email: adminEmail,
-      password
-    });
-    adminCookie = admin.cookie;
+    if (!adminCookie) {
+      const admin = await registerVerifyLogin(request, '/api/admin', {
+        action: 'register',
+        name: `E2E Admin ${stamp}`,
+        email: adminEmail,
+        password
+      });
+      adminCookie = admin.cookie;
+    }
 
     const hideReview = await api(request, '/api/admin', { method: 'PATCH', cookie: adminCookie, body: { action: 'review-moderation', id: reviewId, hidden: true } });
     expect(hideReview.response.ok()).toBeTruthy();

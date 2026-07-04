@@ -169,6 +169,12 @@
         <label class="register-field hidden">Company name<input name="company" autocomplete="organization" placeholder="Your company" /></label>
         <label>Work email<input name="email" required type="email" autocomplete="email" placeholder="you@company.com" /></label>
         <label>Password<input name="password" required type="password" minlength="8" autocomplete="current-password" placeholder="8 characters minimum" /></label>
+        <div class="auth-methods" aria-label="Employer login methods">
+          <p>Or continue with</p>
+          <div><button type="button" class="button subtle" data-auth-provider="google" data-auth-role="employer">Google</button><button type="button" class="button subtle" data-auth-provider="linkedin" data-auth-role="employer">LinkedIn</button></div>
+          <label>Phone number / OTP<input name="phone" type="tel" autocomplete="tel" placeholder="+6591234567" /></label>
+          <button type="button" class="button subtle full" data-phone-otp-role="employer" data-phone-field="#auth-form [name='phone']">Send phone OTP</button>
+        </div>
         <button class="button primary full" id="auth-submit" type="submit">Sign in <span>→</span></button>
         <p class="auth-switch"><span id="auth-switch-copy">New to Crossover Talent?</span> <button type="button" id="auth-switch">Create employer workspace</button></p>
       </form>
@@ -195,6 +201,12 @@
         <label>Personal or work email<input name="email" required type="email" autocomplete="email" placeholder="you@email.com" /></label>
         <label>Password<input name="password" required type="password" minlength="8" autocomplete="current-password" placeholder="8 characters minimum" /></label>
         <label class="candidate-register-field hidden">LinkedIn profile<input name="linkedin" type="url" placeholder="https://www.linkedin.com/in/..." /></label>
+        <div class="auth-methods" aria-label="Candidate login methods">
+          <p>Or continue with</p>
+          <div><button type="button" class="button subtle" data-auth-provider="google" data-auth-role="candidate">Google</button><button type="button" class="button subtle" data-auth-provider="linkedin" data-auth-role="candidate">LinkedIn</button></div>
+          <label>Phone number / OTP<input name="phone" type="tel" autocomplete="tel" placeholder="+6591234567" /></label>
+          <button type="button" class="button subtle full" data-phone-otp-role="candidate" data-phone-field="#candidate-auth-form [name='phone']">Send phone OTP</button>
+        </div>
         <button class="button primary full" id="candidate-auth-submit" type="submit">Sign in <span>→</span></button>
         <p class="auth-switch"><span id="candidate-auth-switch-copy">New to Crossover Talent?</span> <button type="button" id="candidate-auth-switch">Create job seeker account</button></p>
       </form>

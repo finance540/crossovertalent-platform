@@ -1,6 +1,8 @@
 import { del, get, list, put } from '@vercel/blob';
 import { createClient } from '@supabase/supabase-js';
 import { createHash, createHmac, timingSafeEqual, randomBytes, randomUUID, scrypt as scryptCallback } from 'node:crypto';
+import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { promisify } from 'node:util';
 
 const scrypt = promisify(scryptCallback);
@@ -18,6 +20,8 @@ export const IMPACT_SECTORS = [
   'CSR',
   'ESG Consulting'
 ];
+
+export const EMPLOYER_STATUSES = ['pending_review', 'approved', 'rejected', 'suspended'];
 
 function configuredStorageDriver() {
   const requested = (process.env.STORAGE_DRIVER || '').toLowerCase();
@@ -39,6 +43,20 @@ export function verificationLinkPayload(pathname) {
 
 export function allowAdminSelfRegistration() {
   return process.env.VERCEL_ENV !== 'production' || process.env.ALLOW_ADMIN_SELF_REGISTRATION === 'true';
+}
+
+export function employerStatus(account = {}) {
+  const status = account.employer_status || account.employerStatus || '';
+  if (EMPLOYER_STATUSES.includes(status)) return status;
+  return account.createdAt || account.created_at ? 'approved' : 'pending_review';
+}
+
+export function employerStatusMessage(account = {}) {
+  const status = employerStatus(account);
+  if (status === 'pending_review') return 'Your employer account is under review. You can access the dashboard after an admin validates and approves your company.';
+  if (status === 'rejected') return account.rejection_reason ? `Your employer registration was not approved: ${account.rejection_reason}` : 'Your employer registration was not approved. Contact support if you believe this is incorrect.';
+  if (status === 'suspended') return 'Your employer account is suspended. Contact support for help.';
+  return '';
 }
 
 export function configuredSupabaseUrl() {
@@ -67,6 +85,7 @@ export function supabaseKeyType(key = '') {
 
 export function ensureStorage() {
   const driver = configuredStorageDriver();
+  if (driver === 'local') return;
   if (driver === 'supabase') {
     if (!configuredSupabaseUrl() || !configuredSupabaseAdminKey()) throw new Error('Supabase storage is not configured');
     return;
@@ -197,8 +216,62 @@ async function listSupabaseRecords(prefix) {
   return (rows || []).map((row) => row.data).filter(Boolean);
 }
 
+function localStorageRoot() {
+  return path.resolve(process.cwd(), process.env.LOCAL_STORAGE_DIR || '.tmp/local-storage');
+}
+
+function localPath(pathname) {
+  return path.join(localStorageRoot(), pathname);
+}
+
+async function readLocalRecord(pathname) {
+  try {
+    return JSON.parse(await readFile(localPath(pathname), 'utf8'));
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+async function writeLocalRecord(pathname, value, overwrite = false) {
+  const target = localPath(pathname);
+  await mkdir(path.dirname(target), { recursive: true });
+  if (!overwrite) {
+    try {
+      await stat(target);
+      throw new Error('Record already exists');
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+  await writeFile(target, JSON.stringify(value), 'utf8');
+}
+
+async function listLocalFiles(directory) {
+  let entries;
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }
+  const files = await Promise.all(entries.map(async (entry) => {
+    const target = path.join(directory, entry.name);
+    return entry.isDirectory() ? listLocalFiles(target) : [target];
+  }));
+  return files.flat();
+}
+
+async function listLocalRecords(prefix) {
+  const root = localPath(prefix);
+  const files = await listLocalFiles(root);
+  const records = await Promise.all(files.filter((file) => file.endsWith('.json')).map((file) => readFile(file, 'utf8').then(JSON.parse)));
+  return records.filter(Boolean);
+}
+
 export async function readRecord(pathname) {
   if (configuredStorageDriver() === 'supabase') return readSupabaseRecord(pathname);
+  if (configuredStorageDriver() === 'local') return readLocalRecord(pathname);
   const result = await get(pathname, { access: 'private', useCache: false });
   if (!result || result.statusCode !== 200 || !result.stream) return null;
   return new Response(result.stream).json();
@@ -206,16 +279,19 @@ export async function readRecord(pathname) {
 
 export async function writeRecord(pathname, value, overwrite = false) {
   if (configuredStorageDriver() === 'supabase') return writeSupabaseRecord(pathname, value, overwrite);
+  if (configuredStorageDriver() === 'local') return writeLocalRecord(pathname, value, overwrite);
   return put(pathname, JSON.stringify(value), { access: 'private', addRandomSuffix: false, allowOverwrite: overwrite, contentType: 'application/json' });
 }
 
 export async function deleteRecord(pathname) {
   if (configuredStorageDriver() === 'supabase') return deleteSupabaseRecord(pathname);
+  if (configuredStorageDriver() === 'local') return rm(localPath(pathname), { force: true });
   return del(pathname);
 }
 
 export async function listRecords(prefix) {
   if (configuredStorageDriver() === 'supabase') return listSupabaseRecords(prefix);
+  if (configuredStorageDriver() === 'local') return listLocalRecords(prefix);
   const records = [];
   let cursor;
   do {
@@ -471,6 +547,13 @@ async function ensureSupabaseBucket(client, bucket) {
 
 export async function uploadPrivateFile({ bucket, objectPath, buffer, contentType = 'application/octet-stream', metadata = {} }) {
   if (!bucket || !objectPath) throw new Error('File upload target is missing');
+  if (configuredStorageDriver() === 'local') {
+    const target = localPath(`files/${bucket}/${objectPath}`);
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, buffer);
+    await auditLog('file.uploaded', { entityType: 'uploaded_file', entityId: objectPath, metadata: { bucket, contentType, ...metadata } });
+    return { bucket, objectPath };
+  }
   const client = supabaseAdminStorage();
   await ensureSupabaseBucket(client, bucket);
   const { error } = await client.storage.from(bucket).upload(objectPath, buffer, {
@@ -488,6 +571,7 @@ export async function uploadPrivateFile({ bucket, objectPath, buffer, contentTyp
 }
 
 export async function createSignedFileUrl(bucket, objectPath, expiresIn = 600) {
+  if (configuredStorageDriver() === 'local') return { signedUrl: `local://${bucket}/${objectPath}`, expiresIn };
   const client = supabaseAdminStorage();
   const { data, error } = await client.storage.from(bucket).createSignedUrl(objectPath, expiresIn);
   if (error) throw new Error(`Signed URL failed: ${error.message}`);
@@ -514,7 +598,7 @@ function secret() {
 }
 
 export function createSession(user) {
-  const payload = Buffer.from(JSON.stringify({ id: user.id, role: user.role || 'employer', candidateId: user.candidateId, companyId: user.companyId, email: user.email, name: user.name, company: user.company, exp: Date.now() + 7 * 24 * 60 * 60 * 1000 })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({ id: user.id, role: user.role || 'employer', candidateId: user.candidateId, companyId: user.companyId, email: user.email, name: user.name, company: user.company, employer_status: user.employer_status, exp: Date.now() + 7 * 24 * 60 * 60 * 1000 })).toString('base64url');
   const signature = createHmac('sha256', secret()).update(payload).digest('base64url');
   return `${payload}.${signature}`;
 }
@@ -549,6 +633,31 @@ export function requireEmployerSession(request, response) {
     return null;
   }
   return session;
+}
+
+export async function requireApprovedEmployerSession(request, response) {
+  const session = requireEmployerSession(request, response);
+  if (!session) return null;
+  const account = await readRecord(`accounts/${stableHash(session.email)}.json`);
+  if (!account) {
+    response.status(401).json({ error: 'Employer account not found' });
+    return null;
+  }
+  if (account.disabled) {
+    response.status(403).json({ error: 'This account has been disabled by an administrator' });
+    return null;
+  }
+  const status = employerStatus(account);
+  if (status !== 'approved') {
+    response.status(403).json({
+      error: employerStatusMessage(account),
+      employer_status: status,
+      rejection_reason: account.rejection_reason || '',
+      support: 'query@crossovertalent.com'
+    });
+    return null;
+  }
+  return { ...session, company: account.company, companyId: account.companyId, employer_status: status };
 }
 
 export function setSessionCookie(response, token) {

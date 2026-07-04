@@ -1,4 +1,4 @@
-import { appUrl, assertSameOrigin, auditLog, ensureStorage, forbidden, listRecords, methodNotAllowed, productEvent, rateLimit, readRecord, requireSession, sendEmail, serverError, setSecurityHeaders, stableHash, tooManyRequests, writeRecord } from './_lib.js';
+import { appUrl, assertSameOrigin, auditLog, ensureStorage, forbidden, listRecords, methodNotAllowed, productEvent, rateLimit, readRecord, requireApprovedEmployerSession, requireSession, sendEmail, serverError, setSecurityHeaders, stableHash, tooManyRequests, writeRecord } from './_lib.js';
 
 export default async function handler(request, response) {
   try {
@@ -53,7 +53,9 @@ export default async function handler(request, response) {
       await productEvent('application_withdrawn', { actorEmail: session.email, entityType: 'application', entityId: application.id, metadata: { jobId: application.job_id, companyId: application.companyId } });
       return response.json({ ok: true });
     }
-    const prefix = `companies/${session.companyId}/applications/`;
+    const employerSession = await requireApprovedEmployerSession(request, response);
+    if (!employerSession) return;
+    const prefix = `companies/${employerSession.companyId}/applications/`;
     if (request.method === 'GET') {
       const applications = (await listRecords(prefix)).sort((a, b) => b.created_at.localeCompare(a.created_at));
       return response.json({ applications });
@@ -70,7 +72,7 @@ export default async function handler(request, response) {
         subject: `Application status updated: ${application.job_title}`,
         html: `<p>Your application for <strong>${application.job_title}</strong> has moved to <strong>${status}</strong>.</p><p><a href="${appUrl('/?candidate=dashboard')}">Open candidate dashboard</a></p>`
       });
-      await auditLog('application.status_updated', { actorEmail: session.email, entityType: 'application', entityId: application.id, metadata: { status } });
+      await auditLog('application.status_updated', { actorEmail: employerSession.email, entityType: 'application', entityId: application.id, metadata: { status } });
       return response.json({ ok: true });
     }
     return methodNotAllowed(response);

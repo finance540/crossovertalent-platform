@@ -75,6 +75,25 @@ includes('company', /Logo upload failed/, 'logo upload fails clearly when produc
 includes('assist', /storageFallback/, 'upload fallback state is still surfaced where allowed');
 includes('app', /history\.replaceState\(\{\}, '', '\/\?dashboard=1'\)/, 'employer redirects to dashboard');
 includes('app', /history\.replaceState\(\{\}, '', '\/\?candidate=dashboard'\)/, 'candidate redirects to dashboard');
+includes('auth', /employer_status: 'pending_review'/, 'new employers default to pending review');
+includes('auth', /employerStatus\(account\)/, 'employer login evaluates approval status');
+includes('lib', /requireApprovedEmployerSession/, 'protected employer API approval guard exists');
+includes('jobs', /requireApprovedEmployerSession/, 'job posting requires approved employer');
+includes('company', /requireApprovedEmployerSession/, 'company dashboard requires approved employer');
+includes('applications', /requireApprovedEmployerSession/, 'employer applications require approved employer');
+includes('admin', /employer-approval/, 'admin employer approval action exists');
+includes('admin', /reviewed_by/, 'employer review metadata is stored');
+includes('admin', /rejection_reason/, 'employer rejection reason is stored');
+includes('app', /Employer approval queue/, 'admin employer approval queue exists');
+includes('html', /data-auth-provider="google"/, 'Google login option exists');
+includes('html', /data-auth-provider="linkedin"/, 'LinkedIn login option exists');
+includes('html', /data-phone-otp-role="employer"/, 'phone OTP employer option exists');
+includes('app', /startProviderLogin/, 'OAuth login buttons are wired');
+includes('app', /startPhoneOtp/, 'phone OTP button is wired');
+includes('ops', /authProviderStatus/, 'auth provider readiness endpoint exists');
+includes('ops', /AUTH_GOOGLE_ENABLED/, 'Google provider config gate exists');
+includes('ops', /AUTH_LINKEDIN_ENABLED/, 'LinkedIn provider config gate exists');
+includes('ops', /AUTH_PHONE_OTP_ENABLED/, 'phone OTP provider config gate exists');
 
 includes('jobs', /request\.method === 'POST'/, 'job posting route exists');
 includes('jobs', /request\.method === 'PATCH'/, 'job edit and publish route exists');

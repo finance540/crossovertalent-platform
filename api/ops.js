@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { appUrl, assertSameOrigin, auditLog, configuredSupabaseAdminKey, configuredSupabaseUrl, ensureStorage, forbidden, listRecords, methodNotAllowed, probeSupabaseDatabase, rateLimit, readRecord, readSession, sendEmail, serverError, setSecurityHeaders, stableHash, supabaseKeyType, tooManyRequests, writeRecord } from './_lib.js';
+import { appUrl, assertSameOrigin, auditLog, configuredSupabaseAdminKey, configuredSupabasePublishableKey, configuredSupabaseUrl, ensureStorage, forbidden, listRecords, methodNotAllowed, probeSupabaseDatabase, rateLimit, readRecord, readSession, sendEmail, serverError, setSecurityHeaders, stableHash, supabaseKeyType, tooManyRequests, writeRecord } from './_lib.js';
 
 const SUPPORT_TYPES = ['feedback', 'bug', 'support', 'feature'];
 const SUPPORT_PRIORITIES = ['low', 'normal', 'high', 'urgent'];
@@ -269,6 +269,52 @@ async function emailTemplates(request, response) {
   return response.json({ templates: EMAIL_TEMPLATES });
 }
 
+function authProviderStatus() {
+  return {
+    supabaseAuthConfigured: Boolean(configuredSupabaseUrl() && configuredSupabasePublishableKey()),
+    providers: {
+      google: { configured: process.env.AUTH_GOOGLE_ENABLED === 'true', setupRequired: process.env.AUTH_GOOGLE_ENABLED !== 'true' },
+      linkedin: { configured: process.env.AUTH_LINKEDIN_ENABLED === 'true', setupRequired: process.env.AUTH_LINKEDIN_ENABLED !== 'true' },
+      phone: { configured: process.env.AUTH_PHONE_OTP_ENABLED === 'true', setupRequired: process.env.AUTH_PHONE_OTP_ENABLED !== 'true' }
+    },
+    employerApprovalEnforced: true
+  };
+}
+
+async function authProvider(request, response) {
+  const status = authProviderStatus();
+  if (request.method === 'GET') {
+    const provider = clean(request.query.provider || '', 30).toLowerCase();
+    const role = clean(request.query.role || 'candidate', 30).toLowerCase();
+    if (!provider) return response.json(status);
+    if (!['google', 'linkedin'].includes(provider)) return response.status(400).json({ error: 'Choose Google or LinkedIn for OAuth login' });
+    const providerKey = provider === 'linkedin' ? 'linkedin' : 'google';
+    if (!status.supabaseAuthConfigured || !status.providers[providerKey].configured) {
+      return response.status(503).json({
+        error: `${provider === 'google' ? 'Google' : 'LinkedIn'} login is prepared but not enabled yet. Configure the Supabase Auth provider before activating this login method.`,
+        ...status
+      });
+    }
+    const authUrl = new URL('/auth/v1/authorize', configuredSupabaseUrl());
+    authUrl.searchParams.set('provider', provider === 'linkedin' ? 'linkedin_oidc' : 'google');
+    authUrl.searchParams.set('redirect_to', appUrl(`/?auth_callback=1&role=${encodeURIComponent(role)}`));
+    return response.redirect(302, authUrl.toString());
+  }
+  if (request.method !== 'POST') return methodNotAllowed(response);
+  if (!assertSameOrigin(request)) return forbidden(response);
+  const { action = '', phone = '', role = 'candidate' } = request.body || {};
+  if (!['start-phone-otp', 'verify-phone-otp'].includes(action)) return response.status(400).json({ error: 'Choose a valid auth provider action' });
+  if (!status.supabaseAuthConfigured || !status.providers.phone.configured) {
+    return response.status(503).json({
+      error: 'Phone OTP login is prepared but not enabled yet. Configure Supabase Auth phone/SMS provider before activating this login method.',
+      ...status
+    });
+  }
+  if (!/^\+[1-9]\d{7,14}$/.test(clean(phone))) return response.status(400).json({ error: 'Enter a phone number in international format, for example +6591234567' });
+  await auditLog('auth.phone_otp_requested', { entityType: 'auth_provider', metadata: { role, phoneHash: stableHash(phone) } });
+  return response.status(501).json({ error: 'Phone OTP provider is enabled but the app session bridge must be completed and tested before production activation.' });
+}
+
 export default async function handler(request, response) {
   try {
     response.setHeader('Cache-Control', 'no-store');
@@ -279,6 +325,7 @@ export default async function handler(request, response) {
     if (route === 'verify') return verifyEmail(request, response);
     if (route === 'feedback') return feedback(request, response);
     if (route === 'telemetry') return telemetry(request, response);
+    if (route === 'auth-provider') return authProvider(request, response);
     if (route === 'email-templates') return emailTemplates(request, response);
     return response.status(404).json({ error: 'Operational route not found' });
   } catch (error) {

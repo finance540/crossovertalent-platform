@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { IMPACT_SECTORS, assertSameOrigin, deleteRecord, ensureStorage, forbidden, listRecords, methodNotAllowed, productEvent, rateLimit, readRecord, requireEmployerSession, serverError, setSecurityHeaders, tooManyRequests, writeRecord } from './_lib.js';
+import { IMPACT_SECTORS, assertSameOrigin, deleteRecord, ensureStorage, forbidden, listRecords, methodNotAllowed, productEvent, rateLimit, readRecord, requireApprovedEmployerSession, serverError, setSecurityHeaders, tooManyRequests, writeRecord } from './_lib.js';
 
 export default async function handler(request, response) {
   try {
@@ -10,7 +10,7 @@ export default async function handler(request, response) {
       const jobs = (await listRecords('companies/')).filter((item) => item.recordType === 'job' && item.schemaVersion >= 2 && item.status === 'active' && (!request.query.company || item.companyId === request.query.company)).sort((a, b) => b.created_at.localeCompare(a.created_at));
       return response.json({ jobs });
     }
-    const session = requireEmployerSession(request, response);
+    const session = await requireApprovedEmployerSession(request, response);
     if (!session) return;
     if (request.method !== 'GET' && !assertSameOrigin(request)) return forbidden(response);
     if (request.method !== 'GET' && !(await rateLimit(request, `jobs:${session.companyId}`, 60, 60 * 1000))) return tooManyRequests(response);

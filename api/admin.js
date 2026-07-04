@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { allowAdminSelfRegistration, appUrl, assertSameOrigin, auditLog, clearSessionCookie, createSession, ensureStorage, forbidden, hashPassword, listRecords, methodNotAllowed, passwordResetEmail, productEvent, rateLimit, readRecord, readSession, sendEmail, serverError, setSecurityHeaders, setSessionCookie, stableHash, tooManyRequests, verificationEmail, verificationLinkPayload, verifyPassword, writeRecord } from './_lib.js';
+import { EMPLOYER_STATUSES, allowAdminSelfRegistration, appUrl, assertSameOrigin, auditLog, clearSessionCookie, createSession, employerStatus, ensureStorage, forbidden, hashPassword, listRecords, methodNotAllowed, passwordResetEmail, productEvent, rateLimit, readRecord, readSession, sendEmail, serverError, setSecurityHeaders, setSessionCookie, stableHash, tooManyRequests, verificationEmail, verificationLinkPayload, verifyPassword, writeRecord } from './_lib.js';
 
 function clean(value = '') {
   return String(value).trim();
@@ -7,6 +7,10 @@ function clean(value = '') {
 
 function publicAdmin(admin) {
   return { id: admin.id, role: 'admin', name: admin.name, email: admin.email };
+}
+
+function safeUser(item) {
+  return { id: item.id, role: item.role, email: item.email, name: item.name || item.company || '', company: item.company || '', companyId: item.companyId || '', emailVerified: Boolean(item.emailVerified), disabled: Boolean(item.disabled), employer_status: item.role === 'employer' ? employerStatus(item) : '', reviewed_by: item.reviewed_by || '', reviewed_at: item.reviewed_at || '', rejection_reason: item.rejection_reason || '', company_validation_notes: item.company_validation_notes || '', createdAt: item.createdAt || item.created_at || '' };
 }
 
 function isQaAdminEmail(email = '') {
@@ -122,7 +126,6 @@ async function adminPayload() {
   const jobs = companyRecords.filter((item) => item.recordType === 'job');
   const applications = companyRecords.filter((item) => item.recordType === 'application');
   const profiles = companyRecords.filter((item) => item.recordType === 'company_profile');
-  const safeUser = (item) => ({ id: item.id, role: item.role, email: item.email, name: item.name || item.company || '', company: item.company || '', companyId: item.companyId || '', emailVerified: Boolean(item.emailVerified), disabled: Boolean(item.disabled), createdAt: item.createdAt || item.created_at || '' });
   return {
     metrics: await adminMetrics(),
     users: [...accounts, ...candidates, ...admins].map(safeUser),
@@ -169,6 +172,30 @@ export default async function handler(request, response) {
         await writeRecord(path, { ...user, disabled: Boolean(disabled), updatedAt: new Date().toISOString() }, true);
         await auditLog('admin.user_status_changed', { actorEmail: admin.email, entityType: 'user', entityId: user.id, metadata: { role, disabled: Boolean(disabled) } });
         return response.json({ ok: true });
+      }
+      if (action === 'employer-approval') {
+        const normalizedEmail = clean(email).toLowerCase();
+        if (!EMPLOYER_STATUSES.includes(status)) return response.status(400).json({ error: 'Choose a valid employer status' });
+        const path = `accounts/${stableHash(normalizedEmail)}.json`;
+        const employer = await readRecord(path);
+        if (!employer) return response.status(404).json({ error: 'Employer account not found' });
+        if (employer.role !== 'employer') return response.status(400).json({ error: 'Only employer accounts can be reviewed' });
+        const rejectionReason = clean(request.body?.rejection_reason || request.body?.rejectionReason || '').slice(0, 500);
+        const validationNotes = clean(request.body?.company_validation_notes || request.body?.companyValidationNotes || '').slice(0, 1000);
+        if (status === 'rejected' && rejectionReason.length < 3) return response.status(400).json({ error: 'Add a rejection reason before rejecting an employer' });
+        const updated = {
+          ...employer,
+          employer_status: status,
+          reviewed_by: admin.email,
+          reviewed_at: new Date().toISOString(),
+          rejection_reason: status === 'rejected' ? rejectionReason : '',
+          company_validation_notes: validationNotes || employer.company_validation_notes || '',
+          updatedAt: new Date().toISOString()
+        };
+        await writeRecord(path, updated, true);
+        await auditLog('admin.employer_reviewed', { actorEmail: admin.email, entityType: 'account', entityId: employer.id, metadata: { employerEmail: normalizedEmail, status } });
+        await productEvent('employer_reviewed', { actorEmail: admin.email, entityType: 'account', entityId: employer.id, metadata: { employerEmail: normalizedEmail, status } });
+        return response.json({ ok: true, employer: safeUser(updated) });
       }
       if (action === 'review-moderation') {
         const path = `reviews/${id}.json`;

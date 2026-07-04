@@ -199,6 +199,41 @@ function showVerificationNotice(selector, response, email, role) {
   });
 }
 
+function employerStatusLabel(status = '') {
+  return ({ pending_review: 'Pending review', approved: 'Approved', rejected: 'Rejected', suspended: 'Suspended' })[status] || 'Approved';
+}
+
+function showEmployerStatusNotice(selector, error) {
+  const target = $(selector);
+  if (!target) return;
+  const status = employerStatusLabel(error.employer_status);
+  target.innerHTML = `<strong>${escapeHtml(status)}</strong> · ${escapeHtml(error.message || error.error || 'Your employer account requires admin review before dashboard access.')}${error.rejection_reason ? ` <span>${escapeHtml(error.rejection_reason)}</span>` : ''} <a href="/contact.html">Contact support</a>`;
+}
+
+async function startProviderLogin(provider, role) {
+  try {
+    const status = await api('/api/auth-provider');
+    const providerStatus = status.providers?.[provider] || {};
+    if (!status.supabaseAuthConfigured || !providerStatus.configured) {
+      throw new Error(`${providerStatus.label || provider} login is prepared but not enabled yet. Ask an admin to configure the provider in Supabase.`);
+    }
+    location.href = `/api/auth-provider?provider=${encodeURIComponent(provider)}&role=${encodeURIComponent(role)}`;
+  } catch (error) {
+    toast(error.message, true);
+  }
+}
+
+async function startPhoneOtp(role, selector) {
+  try {
+    const phone = $(selector)?.value || '';
+    const response = await api('/api/auth-provider', { method: 'POST', body: JSON.stringify({ action: 'start-phone-otp', role, phone }) });
+    toast(response.message || 'OTP sent');
+  } catch (error) {
+    if (error.employer_status) showEmployerStatusNotice('#auth-subtitle', error);
+    toast(error.message, true);
+  }
+}
+
 function initials(value = '') {
   return value.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'CO';
 }
@@ -807,8 +842,10 @@ async function candidateChat() {
 
 function renderAdminLogin() {
   showScreen('admin');
-  $('#admin-content').innerHTML = `<section class="page-heading"><div><p class="eyebrow">Admin</p><h1>Admin access.</h1><p class="muted" id="admin-auth-message">Sign in with a verified qa-admin account.</p></div></section><section class="panel candidate-form-panel"><div class="form-grid"><label>Name<input id="admin-name-input" placeholder="Required for registration" /></label><label>Email<input id="admin-email-input" type="email" placeholder="qa-admin-name@crossovertalent.asia" /></label><label>Password<input id="admin-password-input" type="password" placeholder="12 characters minimum" /></label><label>Mode<select id="admin-mode-input"><option value="login">Login</option><option value="register">Register</option></select></label></div><div class="dialog-actions"><button class="button primary" id="admin-auth-submit">Continue</button></div></section>`;
+  $('#admin-content').innerHTML = `<section class="page-heading"><div><p class="eyebrow">Admin</p><h1>Admin access.</h1><p class="muted" id="admin-auth-message">Sign in with a verified qa-admin account.</p></div></section><section class="panel candidate-form-panel"><div class="form-grid"><label>Name<input id="admin-name-input" placeholder="Required for registration" /></label><label>Email<input id="admin-email-input" type="email" placeholder="qa-admin-name@crossovertalent.asia" /></label><label>Password<input id="admin-password-input" type="password" placeholder="12 characters minimum" /></label><label>Mode<select id="admin-mode-input"><option value="login">Login</option><option value="register">Register</option></select></label></div><div class="auth-methods"><p>Prepared admin login methods</p><div><button type="button" class="button subtle" data-admin-auth-provider="google">Google</button><button type="button" class="button subtle" data-admin-auth-provider="linkedin">LinkedIn</button></div><label>Phone number / OTP<input id="admin-phone-input" type="tel" placeholder="+6591234567" /></label><button type="button" class="button subtle full" id="admin-phone-otp">Send phone OTP</button></div><div class="dialog-actions"><button class="button primary" id="admin-auth-submit">Continue</button></div></section>`;
   $('#admin-auth-submit').addEventListener('click', adminAuth);
+  $$('[data-admin-auth-provider]').forEach((button) => button.addEventListener('click', () => startProviderLogin(button.dataset.adminAuthProvider, 'admin')));
+  $('#admin-phone-otp')?.addEventListener('click', () => startPhoneOtp('admin', '#admin-phone-input'));
 }
 
 async function adminAuth() {
@@ -854,11 +891,17 @@ function renderAdminDashboard() {
   const metrics = data.metrics || {};
   const health = metrics.systemHealth || {};
   $('#admin-content').innerHTML = `<section class="page-heading"><div><p class="eyebrow">Admin dashboard</p><h1>Operations, growth, and moderation.</h1><p class="muted">Signed in as ${escapeHtml(state.admin?.email || '')} · System ${escapeHtml(health.status || 'unknown')}</p></div></section><section class="tour-grid" aria-label="Admin onboarding tour"><article class="tour-card"><span>1</span><h3>Watch health</h3><p>Review errors, latency, email, AI, and upload signals daily.</p></article><article class="tour-card"><span>2</span><h3>Triage support</h3><p>Move feedback, bugs, and feature requests from open to triaged or closed.</p></article><article class="tour-card"><span>3</span><h3>Moderate trust</h3><p>Review jobs, reviews, and user account status before expansion.</p></article></section><section class="stats-grid"><article class="stat-card"><p>Jobs</p><strong>${metrics.totalJobs ?? jobs.length}</strong></article><article class="stat-card"><p>Employers</p><strong>${metrics.employers ?? 0}</strong></article><article class="stat-card"><p>Candidates</p><strong>${metrics.candidates ?? 0}</strong></article><article class="stat-card"><p>Applications</p><strong>${metrics.applications ?? apps.length}</strong></article></section><section class="stats-grid"><article class="stat-card"><p>Active employers</p><strong>${metrics.activeEmployers ?? 0}</strong></article><article class="stat-card"><p>Active candidates</p><strong>${metrics.activeCandidates ?? 0}</strong></article><article class="stat-card"><p>Weekly registrations</p><strong>${metrics.weeklyRegistrations ?? 0}</strong></article><article class="stat-card"><p>Open support</p><strong>${metrics.supportTicketsOpen ?? 0}</strong></article></section><section class="stats-grid"><article class="stat-card"><p>DAU</p><strong>${metrics.dailyActiveUsers ?? 0}</strong></article><article class="stat-card"><p>WAU</p><strong>${metrics.weeklyActiveUsers ?? 0}</strong></article><article class="stat-card"><p>MAU</p><strong>${metrics.monthlyActiveUsers ?? 0}</strong></article><article class="stat-card"><p>Daily signups</p><strong>${metrics.dailySignups ?? 0}</strong></article></section><section class="stats-grid"><article class="stat-card"><p>Jobs posted</p><strong>${metrics.jobsPosted ?? 0}</strong></article><article class="stat-card"><p>Applications submitted</p><strong>${metrics.applicationsSubmitted ?? apps.length}</strong></article><article class="stat-card"><p>Applications completed</p><strong>${metrics.applicationsCompleted ?? 0}</strong></article><article class="stat-card"><p>Failed applications</p><strong>${metrics.failedApplications ?? 0}</strong></article></section><section class="stats-grid"><article class="stat-card"><p>Application conversion</p><strong>${metrics.applicationConversionRate ?? 0}</strong></article><article class="stat-card"><p>Employer activation</p><strong>${metrics.employerActivationRate ?? 0}</strong></article><article class="stat-card"><p>Candidate activation</p><strong>${metrics.candidateActivationRate ?? 0}</strong></article><article class="stat-card"><p>Email success</p><strong>${metrics.emailSuccessRate ?? 'N/A'}</strong></article></section><section class="panel"><div class="panel-header"><div><h2>Reliability and usage</h2><p>API latency: ${metrics.averageApiLatencyMs ?? 'N/A'} ms · Error rate: ${metrics.errorRate ?? 0} · Uptime: ${metrics.systemUptime ?? 'N/A'}% · AI ${metrics.aiRequests?.success ?? 0}/${metrics.aiRequests?.failed ?? 0} success/fail · Upload ${metrics.uploads?.success ?? 0}/${metrics.uploads?.failed ?? 0} success/fail · Email ${metrics.emailDelivery?.sent ?? 0}/${metrics.emailDelivery?.failed ?? 0} sent/fail · Server errors 24h: ${health.serverErrors24h ?? 0}</p></div></div></section><section class="panel"><div class="panel-header"><div><h2>Feedback inbox</h2><p>User feedback, bug reports, support requests, and feature requests.</p></div></div><div class="support-ticket-list">${supportTickets.length ? supportTickets.slice(0, 12).map((ticket) => `<article class="support-ticket"><small>${escapeHtml(ticket.type)} · ${escapeHtml(ticket.priority)} · ${escapeHtml(ticket.status)}</small><strong>${escapeHtml(ticket.subject)}</strong><p>${escapeHtml(ticket.message)}</p><p>${escapeHtml(ticket.email || 'No email')} ${ticket.company ? `· ${escapeHtml(ticket.company)}` : ''}</p><div class="row-actions"><button class="mini-button" data-support-ticket="${ticket.id}" data-support-status="triaged">Mark triaged</button><button class="mini-button" data-support-ticket="${ticket.id}" data-support-status="closed">Close</button></div></article>`).join('') : '<div class="empty-state"><h3>No support tickets yet</h3><p>Feedback and bug reports from beta users will appear here.</p></div>'}</div></section><section class="panel"><div class="panel-header"><div><h2>User approvals and moderation</h2><p>Review employer, candidate, and admin verification/status. Enable or disable accounts when needed.</p></div></div><div class="table-wrap"><table><thead><tr><th>User</th><th>Role</th><th>Verified</th><th>Status</th><th>Action</th></tr></thead><tbody>${usersPage.items.map((user) => `<tr><td>${escapeHtml(user.email)}<br><small>${escapeHtml(user.name || user.company)}</small></td><td>${escapeHtml(user.role)}</td><td>${user.emailVerified ? 'Yes' : 'No'}</td><td>${user.disabled ? 'Disabled' : 'Enabled'}</td><td><button class="mini-button" data-admin-user="${escapeHtml(user.email)}" data-admin-role="${escapeHtml(user.role)}" data-admin-disabled="${user.disabled ? 'false' : 'true'}">${user.disabled ? 'Enable' : 'Disable'}</button></td></tr>`).join('')}</tbody></table></div>${paginationControls('admin', usersPage)}</section><section class="panel"><div class="panel-header"><div><h2>Company approval</h2><p>Company approval is represented by employer verification/status in Version 1.0; formal approval workflow is planned for Version 1.1.</p></div></div></section><section class="panel"><div class="panel-header"><div><h2>Job moderation</h2><p>Unpublish inappropriate jobs.</p></div></div><div class="table-wrap"><table><thead><tr><th>Job</th><th>Company</th><th>Status</th><th>Action</th></tr></thead><tbody>${jobs.slice(0, 20).map((job) => `<tr><td>${escapeHtml(job.title)}</td><td>${escapeHtml(job.company)}</td><td>${escapeHtml(job.status)}</td><td><button class="mini-button" data-admin-job="${job.id}" data-admin-job-status="${job.status === 'active' ? 'closed' : 'active'}">${job.status === 'active' ? 'Unpublish' : 'Restore'}</button></td></tr>`).join('')}</tbody></table></div></section><section class="panel"><div class="panel-header"><div><h2>Review moderation</h2><p>Hide or restore public reviews.</p></div></div><div class="table-wrap"><table><thead><tr><th>Review</th><th>Company</th><th>Status</th><th>Action</th></tr></thead><tbody>${reviews.slice(0, 20).map((review) => `<tr><td>${escapeHtml(review.headline)}</td><td>${escapeHtml(review.company)}</td><td>${review.hidden ? 'Hidden' : 'Visible'}</td><td><button class="mini-button" data-admin-review="${review.id}" data-admin-hidden="${review.hidden ? 'false' : 'true'}">${review.hidden ? 'Restore' : 'Hide'}</button></td></tr>`).join('')}</tbody></table></div></section>`;
+  [...$('#admin-content').querySelectorAll('.panel')].forEach((panel) => {
+    if (panel.textContent.includes('formal approval workflow is planned')) panel.remove();
+  });
+  const employersForReview = (data.employers || []).filter((user) => user.role === 'employer');
+  $('#admin-content').insertAdjacentHTML('beforeend', `<section class="panel"><div class="panel-header"><div><h2>Employer approval queue</h2><p>New employers default to pending review. Approval cannot be self-assigned and is enforced by employer APIs.</p></div></div>${employersForReview.length ? `<div class="table-wrap"><table><thead><tr><th>Employer</th><th>Status</th><th>Reviewed</th><th>Notes</th><th>Actions</th></tr></thead><tbody>${employersForReview.map((user) => `<tr><td>${escapeHtml(user.company || user.name)}<br><small>${escapeHtml(user.email)}</small></td><td><span class="status ${escapeHtml(user.employer_status || 'approved')}">${escapeHtml(employerStatusLabel(user.employer_status))}</span>${user.rejection_reason ? `<br><small>${escapeHtml(user.rejection_reason)}</small>` : ''}</td><td>${user.reviewed_at ? `${escapeHtml(dateLabel(user.reviewed_at))}<br><small>${escapeHtml(user.reviewed_by)}</small>` : 'Not reviewed'}</td><td>${escapeHtml(user.company_validation_notes || '—')}</td><td><div class="row-actions"><button class="mini-button" data-employer-review="${escapeHtml(user.email)}" data-employer-status="approved">Approve</button><button class="mini-button" data-employer-review="${escapeHtml(user.email)}" data-employer-status="rejected">Reject</button><button class="mini-button" data-employer-review="${escapeHtml(user.email)}" data-employer-status="suspended">Suspend</button></div></td></tr>`).join('')}</tbody></table></div>` : emptyState('✓', 'No employers to review', 'Employer registrations will appear here after signup.')}</section>`);
   bindPagination($('#admin-content'));
   $$('[data-admin-user]').forEach((button) => button.addEventListener('click', () => adminPatch({ action: 'user-status', email: button.dataset.adminUser, role: button.dataset.adminRole, disabled: button.dataset.adminDisabled === 'true' })));
   $$('[data-admin-job]').forEach((button) => button.addEventListener('click', () => adminPatch({ action: 'job-moderation', id: button.dataset.adminJob, status: button.dataset.adminJobStatus })));
   $$('[data-admin-review]').forEach((button) => button.addEventListener('click', () => adminPatch({ action: 'review-moderation', id: button.dataset.adminReview, hidden: button.dataset.adminHidden === 'true' })));
   $$('[data-support-ticket]').forEach((button) => button.addEventListener('click', () => updateSupportTicket(button.dataset.supportTicket, button.dataset.supportStatus)));
+  $$('[data-employer-review]').forEach((button) => button.addEventListener('click', () => reviewEmployer(button.dataset.employerReview, button.dataset.employerStatus)));
 }
 
 async function adminPatch(payload) {
@@ -881,6 +924,16 @@ async function updateSupportTicket(id, status) {
   } catch (error) { toast(error.message, true); }
 }
 
+async function reviewEmployer(email, status) {
+  const companyValidationNotes = window.prompt('Company validation notes', status === 'approved' ? 'Company verified and approved.' : '') || '';
+  let rejectionReason = '';
+  if (status === 'rejected') {
+    rejectionReason = window.prompt('Rejection reason shown to employer', 'Company details could not be validated.') || '';
+    if (!rejectionReason.trim()) return toast('Add a rejection reason before rejecting an employer', true);
+  }
+  await adminPatch({ action: 'employer-approval', email, status, rejection_reason: rejectionReason, company_validation_notes: companyValidationNotes });
+}
+
 $('#auth-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const button = $('#auth-submit');
@@ -898,7 +951,10 @@ $('#auth-form').addEventListener('submit', async (event) => {
     showScreen('app');
     await loadDashboard();
     toast(state.authMode === 'register' ? 'Workspace created' : 'Welcome back');
-  } catch (error) { toast(error.message, true); }
+  } catch (error) {
+    if (error.employer_status) showEmployerStatusNotice('#auth-subtitle', error);
+    toast(error.message, true);
+  }
   finally { button.disabled = false; }
 });
 
@@ -1137,6 +1193,8 @@ $('#candidate-logout-button').addEventListener('click', async () => { await api(
 $('#refresh-admin-button')?.addEventListener('click', () => loadAdminDashboard());
 $('#admin-search')?.addEventListener('input', () => { resetPage('admin'); renderAdminDashboard(); });
 $('#admin-logout-button')?.addEventListener('click', async () => { await api('/api/admin', { method: 'DELETE' }); state.admin = null; state.adminData = null; renderAdminLogin(); toast('Signed out'); });
+$$('[data-auth-provider]').forEach((button) => button.addEventListener('click', () => startProviderLogin(button.dataset.authProvider, button.dataset.authRole)));
+$$('[data-phone-otp-role]').forEach((button) => button.addEventListener('click', () => startPhoneOtp(button.dataset.phoneOtpRole, button.dataset.phoneField)));
 
 async function init() {
   const params = new URLSearchParams(location.search);
@@ -1147,6 +1205,11 @@ async function init() {
   if (params.has('jobs')) {
     showScreen('jobs');
     await loadPublicJobs();
+    return;
+  }
+  if (params.has('auth_callback')) {
+    showScreen('landing');
+    toast('Social login returned. Complete Supabase Auth callback/session bridge before enabling this in production.', true);
     return;
   }
   if (params.has('register') || params.has('login')) {

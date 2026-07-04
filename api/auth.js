@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { appUrl, assertSameOrigin, auditLog, clearSessionCookie, createSession, ensureStorage, forbidden, hashPassword, listRecords, methodNotAllowed, passwordResetEmail, productEvent, rateLimit, readRecord, readSession, sendEmail, serverError, setSecurityHeaders, setSessionCookie, stableHash, tooManyRequests, verificationEmail, verificationLinkPayload, verifyPassword, writeRecord } from './_lib.js';
+import { appUrl, assertSameOrigin, auditLog, clearSessionCookie, createSession, employerStatus, employerStatusMessage, ensureStorage, forbidden, hashPassword, listRecords, methodNotAllowed, passwordResetEmail, productEvent, rateLimit, readRecord, readSession, sendEmail, serverError, setSecurityHeaders, setSessionCookie, stableHash, tooManyRequests, verificationEmail, verificationLinkPayload, verifyPassword, writeRecord } from './_lib.js';
+
+function publicEmployer(account) {
+  const status = employerStatus(account);
+  return { id: account.id, role: 'employer', companyId: account.companyId, email: account.email, company: account.company, employer_status: status, reviewed_at: account.reviewed_at || '', rejection_reason: account.rejection_reason || '', company_validation_notes: account.company_validation_notes || '' };
+}
 
 export default async function handler(request, response) {
   try {
@@ -9,7 +14,12 @@ export default async function handler(request, response) {
     if (request.method === 'GET') {
       const session = readSession(request);
       if (!session) return response.status(401).json({ error: 'Not signed in' });
-      return response.json({ user: { id: session.id, role: session.role || 'employer', companyId: session.companyId, email: session.email, company: session.company } });
+      const account = await readRecord(`accounts/${stableHash(session.email)}.json`);
+      if (!account) return response.status(401).json({ error: 'Not signed in' });
+      if (account.disabled) return response.status(403).json({ error: 'This account has been disabled by an administrator' });
+      const status = employerStatus(account);
+      if (status !== 'approved') return response.status(403).json({ error: employerStatusMessage(account), employer_status: status, user: publicEmployer(account) });
+      return response.json({ user: publicEmployer(account) });
     }
     if (request.method === 'DELETE') {
       clearSessionCookie(response);
@@ -61,7 +71,7 @@ export default async function handler(request, response) {
       if (await readRecord(accountPath)) return response.status(409).json({ error: 'An account with this email already exists' });
       const emailHash = stableHash(normalizedEmail);
       const verificationToken = randomUUID();
-      const account = { id: randomUUID(), role: 'employer', companyId: randomUUID(), company: company.trim(), email: normalizedEmail, emailHash, emailVerified: false, emailVerifiedAt: '', verificationToken, disabled: false, passwordHash: await hashPassword(password), createdAt: new Date().toISOString() };
+      const account = { id: randomUUID(), role: 'employer', companyId: randomUUID(), company: company.trim(), email: normalizedEmail, emailHash, emailVerified: false, emailVerifiedAt: '', verificationToken, disabled: false, employer_status: 'pending_review', reviewed_by: '', reviewed_at: '', rejection_reason: '', company_validation_notes: '', passwordHash: await hashPassword(password), createdAt: new Date().toISOString() };
       try {
         await writeRecord(accountPath, account);
       } catch (error) {
@@ -72,7 +82,7 @@ export default async function handler(request, response) {
       await sendEmail({ to: normalizedEmail, ...verificationEmail('employer', verificationUrl) });
       await auditLog('auth.registered', { actorEmail: normalizedEmail, entityType: 'account', entityId: account.id });
       await productEvent('employer_signup', { actorEmail: normalizedEmail, entityType: 'account', entityId: account.id, metadata: { companyId: account.companyId } });
-      return response.status(202).json({ verificationRequired: true, message: 'Check your email to verify your employer account before signing in.', ...verificationLinkPayload(`/api/verify?token=${verificationToken}`) });
+      return response.status(202).json({ verificationRequired: true, employer_status: 'pending_review', message: 'Check your email to verify your employer account. Your company will then be reviewed before dashboard access is enabled.', ...verificationLinkPayload(`/api/verify?token=${verificationToken}`) });
     }
 
     const account = await readRecord(accountPath);
@@ -82,9 +92,12 @@ export default async function handler(request, response) {
     }
     if (account.disabled) return response.status(403).json({ error: 'This account has been disabled by an administrator' });
     if (!account.emailVerified) return response.status(403).json({ error: 'Verify your email before signing in', verificationRequired: true, ...(account.verificationToken ? verificationLinkPayload(`/api/verify?token=${account.verificationToken}`) : {}) });
-    setSessionCookie(response, createSession(account));
+    const status = employerStatus(account);
+    if (status !== 'approved') return response.status(403).json({ error: employerStatusMessage(account), employer_status: status, user: publicEmployer(account) });
+    const approvedAccount = { ...account, employer_status: status };
+    setSessionCookie(response, createSession(approvedAccount));
     await auditLog('auth.login', { actorEmail: account.email, entityType: 'account', entityId: account.id });
-    await productEvent('employer_login', { actorEmail: account.email, entityType: 'account', entityId: account.id, metadata: { companyId: account.companyId } });
-    return response.json({ user: { id: account.id, role: 'employer', companyId: account.companyId, email: account.email, company: account.company } });
+    await productEvent('employer_login', { actorEmail: account.email, entityType: 'account', entityId: account.id, metadata: { companyId: account.companyId, employer_status: status } });
+    return response.json({ user: publicEmployer(approvedAccount) });
   } catch (error) { return serverError(response, error); }
 }

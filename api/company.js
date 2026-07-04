@@ -1,4 +1,4 @@
-import { IMPACT_SECTORS, allowStorageFallback, auditLog, assertSameOrigin, configuredSupabaseUrl, ensureStorage, forbidden, methodNotAllowed, productEvent, readRecord, requireEmployerSession, serverError, setSecurityHeaders, uploadPrivateFile, writeRecord } from './_lib.js';
+import { IMPACT_SECTORS, allowStorageFallback, auditLog, assertSameOrigin, configuredSupabaseUrl, ensureStorage, forbidden, methodNotAllowed, productEvent, readRecord, requireApprovedEmployerSession, serverError, setSecurityHeaders, uploadPrivateFile, writeRecord } from './_lib.js';
 import { randomUUID } from 'node:crypto';
 
 const MAX_LOGO_BYTES = 750_000;
@@ -57,7 +57,7 @@ export default async function handler(request, response) {
     response.setHeader('Cache-Control', 'no-store');
     setSecurityHeaders(response);
     ensureStorage();
-    const session = requireEmployerSession(request, response);
+    const session = await requireApprovedEmployerSession(request, response);
     if (!session) return;
     const path = `companies/${session.companyId}/profile.json`;
     if (request.method === 'GET') {

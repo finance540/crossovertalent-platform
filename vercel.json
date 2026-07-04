@@ -18,6 +18,7 @@
     { "source": "/api/verify", "destination": "/api/ops?route=verify" },
     { "source": "/api/feedback", "destination": "/api/ops?route=feedback" },
     { "source": "/api/telemetry", "destination": "/api/ops?route=telemetry" },
+    { "source": "/api/auth-provider", "destination": "/api/ops?route=auth-provider" },
     { "source": "/api/email-templates", "destination": "/api/ops?route=email-templates" },
     { "source": "/", "destination": "/index.html" },
     { "source": "/help", "destination": "/help.html" },
