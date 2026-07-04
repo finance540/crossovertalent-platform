@@ -225,11 +225,75 @@ async function startProviderLogin(provider, role) {
   }
 }
 
+async function handleProviderSessionResponse(response, role, noticeSelector = '#auth-subtitle') {
+  if (response.user) {
+    state.user = response.user;
+    history.replaceState({}, '', response.redirectTo || '/?dashboard=1');
+    showScreen('app');
+    await loadDashboard();
+    toast('Welcome back');
+    return;
+  }
+  if (response.candidate) {
+    state.candidate = response.candidate;
+    state.candidateApplications = response.applications || [];
+    history.replaceState({}, '', response.redirectTo || '/?candidate=dashboard');
+    await loadCandidateDashboard();
+    toast('Welcome back');
+    return;
+  }
+  if (response.admin) {
+    state.admin = response.admin;
+    history.replaceState({}, '', response.redirectTo || '/?admin=1');
+    await loadAdminDashboard();
+    toast('Admin signed in');
+    return;
+  }
+  if (role === 'employer' && response.employer_status) showEmployerStatusNotice(noticeSelector, response);
+}
+
+async function completeOAuthCallback() {
+  const params = new URLSearchParams(location.search);
+  const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const accessToken = hash.get('access_token') || '';
+  const role = params.get('role') || 'candidate';
+  const provider = hash.get('provider_token') ? 'oauth' : 'oauth';
+  let completed = false;
+  if (!accessToken) {
+    showScreen('landing');
+    toast('Social login returned without a Supabase access token. Check the Supabase Auth flow configuration.', true);
+    return;
+  }
+  try {
+    const response = await api('/api/auth-provider', { method: 'POST', body: JSON.stringify({ action: 'complete-oauth', role, provider, accessToken }) });
+    await handleProviderSessionResponse(response, role, role === 'candidate' ? '#candidate-auth-subtitle' : '#auth-subtitle');
+    completed = true;
+  } catch (error) {
+    if (error.employer_status) {
+      openAuth('login');
+      showEmployerStatusNotice('#auth-subtitle', error);
+    } else if (role === 'candidate') {
+      openCandidateAuth('login');
+    } else {
+      showScreen('landing');
+    }
+    toast(error.message, true);
+  } finally {
+    if (!completed) history.replaceState({}, '', role === 'candidate' ? '/?candidate=login' : role === 'admin' ? '/?admin=1' : '/?login=1');
+  }
+}
+
 async function startPhoneOtp(role, selector) {
   try {
     const phone = $(selector)?.value || '';
     const response = await api('/api/auth-provider', { method: 'POST', body: JSON.stringify({ action: 'start-phone-otp', role, phone }) });
     toast(response.message || 'OTP sent');
+    const token = window.prompt('Enter the OTP code sent to your phone') || '';
+    if (!token.trim()) return;
+    const company = role === 'employer' ? (window.prompt('Company name for employer review') || '') : '';
+    const name = role === 'candidate' || role === 'admin' ? (window.prompt('Your name') || '') : '';
+    const verified = await api('/api/auth-provider', { method: 'POST', body: JSON.stringify({ action: 'verify-phone-otp', role, phone, token, company, name }) });
+    await handleProviderSessionResponse(verified, role, role === 'candidate' ? '#candidate-auth-subtitle' : role === 'admin' ? '#admin-auth-message' : '#auth-subtitle');
   } catch (error) {
     if (error.employer_status) showEmployerStatusNotice('#auth-subtitle', error);
     toast(error.message, true);
@@ -1210,8 +1274,7 @@ async function init() {
     return;
   }
   if (params.has('auth_callback')) {
-    showScreen('landing');
-    toast('Social login returned. Complete Supabase Auth callback/session bridge before enabling this in production.', true);
+    await completeOAuthCallback();
     return;
   }
   if (params.has('register') || params.has('login')) {

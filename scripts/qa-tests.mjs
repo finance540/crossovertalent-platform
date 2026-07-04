@@ -90,7 +90,12 @@ includes('html', /data-auth-provider="linkedin"/, 'LinkedIn login option exists'
 includes('html', /data-phone-otp-role="employer"/, 'phone OTP employer option exists');
 includes('app', /startProviderLogin/, 'OAuth login buttons are wired');
 includes('app', /startPhoneOtp/, 'phone OTP button is wired');
+includes('app', /completeOAuthCallback/, 'OAuth callback completes app session bridge');
+includes('app', /verify-phone-otp/, 'phone OTP verification completes app session bridge');
 includes('ops', /authProviderStatus/, 'auth provider readiness endpoint exists');
+includes('ops', /completeProviderLogin/, 'Supabase provider identity maps into app sessions');
+includes('ops', /supabaseUserFromAccessToken/, 'OAuth access token is verified with Supabase Auth');
+includes('ops', /employerStatusMessage\(updated\)/, 'provider employer login still enforces approval gate');
 includes('ops', /AUTH_GOOGLE_ENABLED/, 'Google provider config gate exists');
 includes('ops', /AUTH_LINKEDIN_ENABLED/, 'LinkedIn provider config gate exists');
 includes('ops', /AUTH_PHONE_OTP_ENABLED/, 'phone OTP provider config gate exists');

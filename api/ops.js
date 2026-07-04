@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { appUrl, assertSameOrigin, auditLog, configuredSupabaseAdminKey, configuredSupabasePublishableKey, configuredSupabaseUrl, ensureStorage, forbidden, listRecords, methodNotAllowed, probeSupabaseDatabase, rateLimit, readRecord, readSession, sendEmail, serverError, setSecurityHeaders, stableHash, supabaseKeyType, tooManyRequests, writeRecord } from './_lib.js';
+import { appUrl, assertSameOrigin, auditLog, configuredSupabaseAdminKey, configuredSupabasePublishableKey, configuredSupabaseUrl, createSession, employerStatus, employerStatusMessage, ensureStorage, forbidden, listRecords, methodNotAllowed, probeSupabaseDatabase, productEvent, rateLimit, readRecord, readSession, sendEmail, serverError, setSecurityHeaders, setSessionCookie, stableHash, supabaseKeyType, tooManyRequests, writeRecord } from './_lib.js';
 
 const SUPPORT_TYPES = ['feedback', 'bug', 'support', 'feature'];
 const SUPPORT_PRIORITIES = ['low', 'normal', 'high', 'urgent'];
@@ -281,6 +281,175 @@ function authProviderStatus() {
   };
 }
 
+function providerHeaders(accessToken = '') {
+  const key = configuredSupabasePublishableKey();
+  const headers = { apikey: key, 'content-type': 'application/json' };
+  if (accessToken) headers.authorization = `Bearer ${accessToken}`;
+  return headers;
+}
+
+async function supabaseAuthRequest(pathname, { accessToken = '', method = 'GET', body } = {}) {
+  const base = configuredSupabaseUrl();
+  const key = configuredSupabasePublishableKey();
+  if (!base || !key) throw new Error('Supabase Auth is not configured');
+  const response = await fetch(new URL(pathname, base), {
+    method,
+    headers: providerHeaders(accessToken),
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.msg || data.message || data.error_description || data.error || 'Supabase Auth request failed');
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+async function supabaseUserFromAccessToken(accessToken = '') {
+  if (!accessToken || accessToken.length < 20) {
+    const error = new Error('Missing Supabase access token');
+    error.status = 400;
+    throw error;
+  }
+  return supabaseAuthRequest('/auth/v1/user', { accessToken });
+}
+
+function providerDisplayName(user = {}, fallback = '') {
+  const metadata = user.user_metadata || user.raw_user_meta_data || {};
+  return clean(metadata.full_name || metadata.name || metadata.preferred_username || fallback || user.email || user.phone || 'Crossover Talent user', 120);
+}
+
+function providerEmail(user = {}) {
+  return clean(user.email || '', 254).toLowerCase();
+}
+
+function providerPhone(user = {}) {
+  return clean(user.phone || user.user_metadata?.phone || '', 40);
+}
+
+function providerInternalEmail(user = {}) {
+  const email = providerEmail(user);
+  if (email) return email;
+  const phone = providerPhone(user);
+  return phone ? `phone-${stableHash(phone).slice(0, 24)}@phone.crossovertalent.local` : '';
+}
+
+function publicProviderCandidate(candidate) {
+  return {
+    id: candidate.id,
+    role: 'candidate',
+    name: candidate.name,
+    email: candidate.email,
+    linkedin: candidate.linkedin || '',
+    resume: candidate.resume || '',
+    savedJobs: candidate.savedJobs || [],
+    preferences: candidate.preferences || {}
+  };
+}
+
+function publicProviderEmployer(account) {
+  const status = employerStatus(account);
+  return { id: account.id, role: 'employer', companyId: account.companyId, email: account.email, company: account.company, employer_status: status, reviewed_at: account.reviewed_at || '', rejection_reason: account.rejection_reason || '', company_validation_notes: account.company_validation_notes || '' };
+}
+
+async function completeProviderLogin(request, response, { user, role, provider, company = '', name = '' }) {
+  const selectedRole = ['employer', 'candidate', 'admin'].includes(role) ? role : 'candidate';
+  const email = providerInternalEmail(user);
+  const phone = providerPhone(user);
+  if (!email) return response.status(400).json({ error: 'Supabase Auth did not return an email or phone number for this login' });
+  const emailHash = stableHash(email);
+  const providerMetadata = {
+    provider,
+    supabaseUserId: user.id || '',
+    phoneHash: phone ? stableHash(phone) : '',
+    emailVerifiedByProvider: Boolean(user.email_confirmed_at || user.confirmed_at || user.email || phone),
+    lastProviderLoginAt: new Date().toISOString()
+  };
+
+  if (selectedRole === 'admin') {
+    const path = `admins/${emailHash}.json`;
+    const admin = await readRecord(path);
+    if (!admin) return response.status(403).json({ error: 'Admin account must be created and verified before social login is allowed' });
+    if (admin.disabled) return response.status(403).json({ error: 'This admin account has been disabled' });
+    const updated = { ...admin, emailVerified: true, emailVerifiedAt: admin.emailVerifiedAt || new Date().toISOString(), authProvider: providerMetadata, updatedAt: new Date().toISOString() };
+    await writeRecord(path, updated, true);
+    setSessionCookie(response, createSession(updated));
+    await auditLog('admin.provider_login', { actorEmail: updated.email, entityType: 'admin', entityId: updated.id, metadata: { provider } });
+    return response.json({ admin: { id: updated.id, role: 'admin', name: updated.name, email: updated.email }, redirectTo: '/?admin=1' });
+  }
+
+  if (selectedRole === 'candidate') {
+    const path = `candidates/${emailHash}.json`;
+    const existing = await readRecord(path);
+    if (existing?.disabled) return response.status(403).json({ error: 'This account has been disabled by an administrator' });
+    const candidate = existing || {
+      id: randomUUID(),
+      role: 'candidate',
+      name: providerDisplayName(user, name),
+      email,
+      emailHash,
+      emailVerified: true,
+      emailVerifiedAt: new Date().toISOString(),
+      verificationToken: '',
+      disabled: false,
+      linkedin: '',
+      passwordHash: '',
+      savedJobs: [],
+      resume: '',
+      preferences: {},
+      phone,
+      createdAt: new Date().toISOString()
+    };
+    const updated = { ...candidate, name: candidate.name || providerDisplayName(user, name), phone: phone || candidate.phone || '', emailVerified: true, emailVerifiedAt: candidate.emailVerifiedAt || new Date().toISOString(), authProvider: providerMetadata, updatedAt: new Date().toISOString() };
+    await writeRecord(path, updated, true);
+    setSessionCookie(response, createSession({ ...updated, candidateId: updated.id }));
+    await auditLog(existing ? 'candidate.provider_login' : 'candidate.provider_registered', { actorEmail: updated.email, entityType: 'candidate', entityId: updated.id, metadata: { provider } });
+    await productEvent(existing ? 'candidate_login' : 'candidate_signup', { actorEmail: updated.email, entityType: 'candidate', entityId: updated.id, metadata: { provider } });
+    return response.json({ candidate: publicProviderCandidate(updated), applications: [], redirectTo: '/?candidate=dashboard' });
+  }
+
+  const path = `accounts/${emailHash}.json`;
+  const existing = await readRecord(path);
+  if (existing?.disabled) return response.status(403).json({ error: 'This account has been disabled by an administrator' });
+  const account = existing || {
+    id: randomUUID(),
+    role: 'employer',
+    companyId: randomUUID(),
+    company: clean(company || providerDisplayName(user, name) || 'Company pending review', 120),
+    email,
+    emailHash,
+    emailVerified: true,
+    emailVerifiedAt: new Date().toISOString(),
+    verificationToken: '',
+    disabled: false,
+    employer_status: 'pending_review',
+    reviewed_by: '',
+    reviewed_at: '',
+    rejection_reason: '',
+    company_validation_notes: '',
+    passwordHash: '',
+    phone,
+    createdAt: new Date().toISOString()
+  };
+  const updated = { ...account, phone: phone || account.phone || '', emailVerified: true, emailVerifiedAt: account.emailVerifiedAt || new Date().toISOString(), authProvider: providerMetadata, updatedAt: new Date().toISOString() };
+  await writeRecord(path, updated, true);
+  const statusValue = employerStatus(updated);
+  await auditLog(existing ? 'auth.provider_login' : 'auth.provider_registered', { actorEmail: updated.email, entityType: 'account', entityId: updated.id, metadata: { provider, employer_status: statusValue } });
+  await productEvent(existing ? 'employer_login' : 'employer_signup', { actorEmail: updated.email, entityType: 'account', entityId: updated.id, metadata: { provider, companyId: updated.companyId, employer_status: statusValue } });
+  if (statusValue !== 'approved') {
+    return response.status(403).json({
+      error: employerStatusMessage(updated),
+      employer_status: statusValue,
+      rejection_reason: updated.rejection_reason || '',
+      user: publicProviderEmployer(updated),
+      support: 'query@crossovertalent.com'
+    });
+  }
+  setSessionCookie(response, createSession({ ...updated, employer_status: statusValue }));
+  return response.json({ user: publicProviderEmployer(updated), redirectTo: '/?dashboard=1' });
+}
+
 async function authProvider(request, response) {
   const status = authProviderStatus();
   if (request.method === 'GET') {
@@ -302,7 +471,11 @@ async function authProvider(request, response) {
   }
   if (request.method !== 'POST') return methodNotAllowed(response);
   if (!assertSameOrigin(request)) return forbidden(response);
-  const { action = '', phone = '', role = 'candidate' } = request.body || {};
+  const { action = '', phone = '', token = '', accessToken = '', role = 'candidate', provider = 'oauth', company = '', name = '' } = request.body || {};
+  if (action === 'complete-oauth') {
+    const user = await supabaseUserFromAccessToken(accessToken);
+    return completeProviderLogin(request, response, { user, role: clean(role, 30).toLowerCase(), provider: clean(provider || 'oauth', 30), company, name });
+  }
   if (!['start-phone-otp', 'verify-phone-otp'].includes(action)) return response.status(400).json({ error: 'Choose a valid auth provider action' });
   if (!status.supabaseAuthConfigured || !status.providers.phone.configured) {
     return response.status(503).json({
@@ -310,9 +483,16 @@ async function authProvider(request, response) {
       ...status
     });
   }
-  if (!/^\+[1-9]\d{7,14}$/.test(clean(phone))) return response.status(400).json({ error: 'Enter a phone number in international format, for example +6591234567' });
-  await auditLog('auth.phone_otp_requested', { entityType: 'auth_provider', metadata: { role, phoneHash: stableHash(phone) } });
-  return response.status(501).json({ error: 'Phone OTP provider is enabled but the app session bridge must be completed and tested before production activation.' });
+  const cleanPhone = clean(phone, 40);
+  if (!/^\+[1-9]\d{7,14}$/.test(cleanPhone)) return response.status(400).json({ error: 'Enter a phone number in international format, for example +6591234567' });
+  if (action === 'start-phone-otp') {
+    await supabaseAuthRequest('/auth/v1/otp', { method: 'POST', body: { phone: cleanPhone, create_user: true } });
+    await auditLog('auth.phone_otp_requested', { entityType: 'auth_provider', metadata: { role, phoneHash: stableHash(cleanPhone) } });
+    return response.status(202).json({ ok: true, message: 'OTP sent. Enter the code to continue.' });
+  }
+  if (!/^\d{4,10}$/.test(clean(token, 20))) return response.status(400).json({ error: 'Enter the OTP code sent to your phone' });
+  const verified = await supabaseAuthRequest('/auth/v1/verify', { method: 'POST', body: { phone: cleanPhone, token: clean(token, 20), type: 'sms' } });
+  return completeProviderLogin(request, response, { user: verified.user || { phone: cleanPhone }, role: clean(role, 30).toLowerCase(), provider: 'phone', company, name });
 }
 
 export default async function handler(request, response) {
