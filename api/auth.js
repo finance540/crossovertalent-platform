@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { appUrl, assertSameOrigin, auditLog, clearSessionCookie, createSession, ensureStorage, forbidden, hashPassword, listRecords, methodNotAllowed, passwordResetEmail, productEvent, rateLimit, readRecord, readSession, sendEmail, serverError, setSecurityHeaders, setSessionCookie, stableHash, tooManyRequests, verificationEmail, verifyPassword, writeRecord } from './_lib.js';
+import { appUrl, assertSameOrigin, auditLog, clearSessionCookie, createSession, ensureStorage, forbidden, hashPassword, listRecords, methodNotAllowed, passwordResetEmail, productEvent, rateLimit, readRecord, readSession, sendEmail, serverError, setSecurityHeaders, setSessionCookie, stableHash, tooManyRequests, verificationEmail, verificationLinkPayload, verifyPassword, writeRecord } from './_lib.js';
 
 export default async function handler(request, response) {
   try {
@@ -29,7 +29,7 @@ export default async function handler(request, response) {
       await writeRecord(`accounts/${stableHash(normalizedEmail)}.json`, { ...account, verificationToken, updatedAt: new Date().toISOString() }, true);
       const verificationUrl = appUrl(`/api/verify?token=${verificationToken}`);
       await sendEmail({ to: normalizedEmail, ...verificationEmail('employer', verificationUrl) });
-      return response.json({ ok: true, message: 'Verification email queued', verificationUrl: `/api/verify?token=${verificationToken}` });
+      return response.json({ ok: true, message: 'Verification email queued', ...verificationLinkPayload(`/api/verify?token=${verificationToken}`) });
     }
     if (action === 'request-password-reset') {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) return response.status(400).json({ error: 'Use a valid email address' });
@@ -72,7 +72,7 @@ export default async function handler(request, response) {
       await sendEmail({ to: normalizedEmail, ...verificationEmail('employer', verificationUrl) });
       await auditLog('auth.registered', { actorEmail: normalizedEmail, entityType: 'account', entityId: account.id });
       await productEvent('employer_signup', { actorEmail: normalizedEmail, entityType: 'account', entityId: account.id, metadata: { companyId: account.companyId } });
-      return response.status(202).json({ verificationRequired: true, message: 'Check your email to verify your employer account before signing in.', verificationUrl: `/api/verify?token=${verificationToken}` });
+      return response.status(202).json({ verificationRequired: true, message: 'Check your email to verify your employer account before signing in.', ...verificationLinkPayload(`/api/verify?token=${verificationToken}`) });
     }
 
     const account = await readRecord(accountPath);
@@ -81,7 +81,7 @@ export default async function handler(request, response) {
       return response.status(401).json({ error: 'Incorrect email or password' });
     }
     if (account.disabled) return response.status(403).json({ error: 'This account has been disabled by an administrator' });
-    if (!account.emailVerified) return response.status(403).json({ error: 'Verify your email before signing in', verificationRequired: true, verificationUrl: account.verificationToken ? `/api/verify?token=${account.verificationToken}` : undefined });
+    if (!account.emailVerified) return response.status(403).json({ error: 'Verify your email before signing in', verificationRequired: true, ...(account.verificationToken ? verificationLinkPayload(`/api/verify?token=${account.verificationToken}`) : {}) });
     setSessionCookie(response, createSession(account));
     await auditLog('auth.login', { actorEmail: account.email, entityType: 'account', entityId: account.id });
     await productEvent('employer_login', { actorEmail: account.email, entityType: 'account', entityId: account.id, metadata: { companyId: account.companyId } });

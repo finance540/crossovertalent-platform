@@ -29,6 +29,18 @@ export function allowStorageFallback() {
   return configuredStorageDriver() !== 'supabase' || (process.env.VERCEL_ENV !== 'production' && process.env.NODE_ENV !== 'production');
 }
 
+export function exposeVerificationLinks() {
+  return process.env.VERCEL_ENV !== 'production' || process.env.EXPOSE_VERIFICATION_LINKS === 'true';
+}
+
+export function verificationLinkPayload(pathname) {
+  return exposeVerificationLinks() ? { verificationUrl: pathname } : {};
+}
+
+export function allowAdminSelfRegistration() {
+  return process.env.VERCEL_ENV !== 'production' || process.env.ALLOW_ADMIN_SELF_REGISTRATION === 'true';
+}
+
 export function configuredSupabaseUrl() {
   return (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '').replace(/\/$/, '');
 }

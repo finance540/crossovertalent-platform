@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { appUrl, assertSameOrigin, auditLog, clearSessionCookie, createSession, ensureStorage, forbidden, hashPassword, listRecords, methodNotAllowed, passwordResetEmail, productEvent, rateLimit, readRecord, readSession, sendEmail, serverError, setSecurityHeaders, setSessionCookie, stableHash, tooManyRequests, verificationEmail, verifyPassword, writeRecord } from './_lib.js';
+import { allowAdminSelfRegistration, appUrl, assertSameOrigin, auditLog, clearSessionCookie, createSession, ensureStorage, forbidden, hashPassword, listRecords, methodNotAllowed, passwordResetEmail, productEvent, rateLimit, readRecord, readSession, sendEmail, serverError, setSecurityHeaders, setSessionCookie, stableHash, tooManyRequests, verificationEmail, verificationLinkPayload, verifyPassword, writeRecord } from './_lib.js';
 
 function clean(value = '') {
   return String(value).trim();
@@ -206,7 +206,7 @@ export default async function handler(request, response) {
       const verificationToken = randomUUID();
       await writeRecord(path, { ...admin, verificationToken, updatedAt: new Date().toISOString() }, true);
       await sendEmail({ to: normalizedEmail, ...verificationEmail('admin', appUrl(`/api/verify?token=${verificationToken}`)) });
-      return response.json({ ok: true, message: 'Verification email queued', verificationUrl: `/api/verify?token=${verificationToken}` });
+      return response.json({ ok: true, message: 'Verification email queued', ...verificationLinkPayload(`/api/verify?token=${verificationToken}`) });
     }
     if (action === 'request-password-reset') {
       if (!isQaAdminEmail(normalizedEmail)) return response.status(403).json({ error: 'Use a qa-admin address at crossovertalent.asia' });
@@ -237,6 +237,7 @@ export default async function handler(request, response) {
 
     const path = `admins/${stableHash(normalizedEmail)}.json`;
     if (action === 'register') {
+      if (!allowAdminSelfRegistration()) return response.status(403).json({ error: 'Admin account creation is restricted in production. Ask an existing admin to provision access.' });
       if (clean(name).length < 2) return response.status(400).json({ error: 'Enter the admin name' });
       if (await readRecord(path)) return response.status(409).json({ error: 'An admin account already exists for this email' });
       const verificationToken = randomUUID();
@@ -244,7 +245,7 @@ export default async function handler(request, response) {
       await writeRecord(path, admin);
       await sendEmail({ to: normalizedEmail, ...verificationEmail('admin', appUrl(`/api/verify?token=${verificationToken}`)) });
       await auditLog('admin.registered', { actorEmail: normalizedEmail, entityType: 'admin', entityId: admin.id });
-      return response.status(202).json({ verificationRequired: true, message: 'Check your email to verify your admin account before signing in.', verificationUrl: `/api/verify?token=${verificationToken}` });
+      return response.status(202).json({ verificationRequired: true, message: 'Check your email to verify your admin account before signing in.', ...verificationLinkPayload(`/api/verify?token=${verificationToken}`) });
     }
 
     const admin = await readRecord(path);
@@ -253,7 +254,7 @@ export default async function handler(request, response) {
       return response.status(401).json({ error: 'Incorrect email or password' });
     }
     if (admin.disabled) return response.status(403).json({ error: 'This admin account has been disabled' });
-    if (!admin.emailVerified) return response.status(403).json({ error: 'Verify your email before signing in', verificationRequired: true, verificationUrl: admin.verificationToken ? `/api/verify?token=${admin.verificationToken}` : undefined });
+    if (!admin.emailVerified) return response.status(403).json({ error: 'Verify your email before signing in', verificationRequired: true, ...(admin.verificationToken ? verificationLinkPayload(`/api/verify?token=${admin.verificationToken}`) : {}) });
     setSessionCookie(response, createSession(admin));
     await auditLog('admin.login', { actorEmail: admin.email, entityType: 'admin', entityId: admin.id });
     await productEvent('admin_login', { actorEmail: admin.email, entityType: 'admin', entityId: admin.id });

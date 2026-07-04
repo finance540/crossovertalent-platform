@@ -11,6 +11,11 @@ function groupKey(signal) {
   return [signal.company, signal.role, signal.location, signal.level].map((value) => String(value || '').toLowerCase()).join('|');
 }
 
+function publicSignal(signal) {
+  const { ownerHash, ...safeSignal } = signal;
+  return safeSignal;
+}
+
 export default async function handler(request, response) {
   try {
     response.setHeader('Cache-Control', 'no-store');
@@ -28,7 +33,7 @@ export default async function handler(request, response) {
         groups.set(key, group);
       });
       const aggregates = [...groups.values()].map((group) => ({ ...group, averageMin: Math.round(group.min / group.count), averageMax: Math.round(group.max / group.count) }));
-      return response.json({ signals, aggregates });
+      return response.json({ signals: signals.map(publicSignal), aggregates });
     }
     if (request.method === 'POST') {
       if (!assertSameOrigin(request)) return forbidden(response);
@@ -63,7 +68,7 @@ export default async function handler(request, response) {
       };
       await writeRecord(`salary-signals/${id}.json`, signal);
       await auditLog('salary_signal.created', { actorEmail: session.email, entityType: 'salary_signal', entityId: id, metadata: { company: signal.company, role: signal.role, location: signal.location } });
-      return response.status(201).json({ signal });
+      return response.status(201).json({ signal: publicSignal(signal) });
     }
     if (request.method === 'DELETE') {
       if (!assertSameOrigin(request)) return forbidden(response);
