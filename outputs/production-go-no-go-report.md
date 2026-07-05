@@ -2,27 +2,11 @@
 
 Date: 2026-07-05
 
-Decision: **GO - AI Navigation Assistant fully validated in production protected dashboards**
+## Decision
 
-DNS was not changed in this task. Production remained on `https://crossovertalent.asia`.
+**GO - AI Navigation Assistant fully validated in production protected dashboards.**
 
-## Current Gate Status
-
-| Area | Status |
-|---|---:|
-| GitHub deployment provenance | PASS |
-| Vercel Git production deployment | PASS |
-| Latest deployment status | PASS |
-| Production environment variable names | PASS |
-| Supabase project ref `hntvcqahoseizmgswohq` | PASS |
-| `/api/health` | PASS |
-| `/api/ready` | PASS |
-| `/api/assist` | PASS |
-| Assistant homepage rendering | PASS |
-| No staging Supabase reference in public assets | PASS |
-| No service role key exposed client-side | PASS |
-| Local regression suite | PASS |
-| Protected production dashboard smoke | PASS |
+Production remained on `https://crossovertalent.asia`. No DNS change, code change, redeploy, or production data mutation was performed for this final handoff update.
 
 ## Deployment Evidence
 
@@ -33,47 +17,85 @@ DNS was not changed in this task. Production remained on `https://crossovertalen
 | Production alias | `https://crossovertalent.asia` |
 | Final deployed commit | `5a4e3d8` |
 | Assistant implementation commit | `6081598` |
+| Fallback sanitizer commit | `5a4e3d8` |
+| Validation evidence commit | `b335583` |
 | Production Supabase ref | `hntvcqahoseizmgswohq` |
+
+## Current Gate Status
+
+| Area | Status |
+|---|---:|
+| Vercel production deployment | PASS |
+| Supabase project ref `hntvcqahoseizmgswohq` | PASS |
+| `/api/health` | PASS |
+| `/api/ready` | PASS |
+| `/api/assist` | PASS |
+| Homepage assistant rendering | PASS |
+| Employer login assistant rendering | PASS |
+| Employer protected dashboard assistant | PASS |
+| Candidate protected dashboard assistant | PASS |
+| Admin protected dashboard assistant | PASS |
+| AI fallback | PASS |
+| Secret exposure scan | PASS |
+| Console/network dashboard checks | PASS |
 
 ## Validation Results
 
 | Workflow / Check | Result | Notes |
 |---|---:|---|
 | Health endpoint | PASS | HTTP 200, status `healthy`. |
-| Readiness endpoint | PASS | HTTP 200, status `ready`, production Supabase ref confirmed. |
+| Readiness endpoint | PASS | HTTP 200, production Supabase ref confirmed. |
 | Assistant API | PASS | HTTP 200 with role-aware safe guidance. |
-| AI fallback | PASS | Returned safe fallback with `AI provider unavailable`; no raw provider error exposed. |
-| Homepage assistant widget | PASS | Widget and panel are present in production HTML. |
-| Employer login page assistant widget | PASS | Widget and panel are present on `/?login=1`. |
+| AI fallback | PASS | Safe fallback works with `AI provider unavailable`. |
+| Homepage assistant widget | PASS | Widget and panel present in production HTML. |
+| Employer login page assistant widget | PASS | Widget and panel present on `/?login=1`. |
+| Live protected employer dashboard | PASS | Existing approved employer smoke account logged in; employer prompts and submit flow responded. |
+| Live protected candidate dashboard | PASS | Existing verified candidate smoke account logged in; candidate prompts and submit flow responded. |
+| Live protected admin dashboard | PASS | Existing admin smoke account logged in; admin prompts and submit flow responded. |
+| No service role key exposed client-side | PASS | No service-role/env markers found in public HTML/JS. |
+| No staging Supabase reference | PASS | No staging project ref found in public HTML/JS. |
 | Public jobs API | PASS | HTTP 200; returned production job records. |
 | Admin route protection | PASS | Unauthenticated `/api/admin` returned HTTP 401. |
-| Local employer/candidate/admin workflows | PASS | Playwright E2E 6/6 passed before deployment. |
-| Live protected employer dashboard | PASS | Existing approved employer smoke account logged in; assistant rendered employer prompts and submit flow responded. |
-| Live protected candidate dashboard | PASS | Existing verified candidate smoke account logged in; assistant rendered candidate prompts and submit flow responded. |
-| Live protected admin dashboard | PASS | Existing admin smoke account logged in; assistant rendered admin prompts and submit flow responded. |
-| Protected-dashboard console/network checks | PASS | No console errors and no failed dashboard requests observed during employer, candidate, or admin validation. |
 
-## Remaining Blockers
+## Evidence
 
-No P0/P1 blockers remain for the AI Navigation Assistant production release.
-
-Screenshots captured:
+Screenshots:
 
 - `outputs/assistant-production-employer.png`
 - `outputs/assistant-production-candidate.png`
 - `outputs/assistant-production-admin.png`
 
-## Rollback Steps
+Supporting reports:
 
-If a production issue appears:
+- `outputs/post-assistant-production-validation.md`
+- `outputs/ai-navigation-assistant-release-handoff.md`
+- `outputs/ai-navigation-assistant-report.md`
+- `outputs/assistant-security-guardrails.md`
+- `outputs/assistant-ux-flow.md`
 
-1. In Vercel, promote the previous production deployment before `6081598`.
-2. Verify `/api/health` and `/api/ready`.
-3. Confirm homepage and dashboard load.
-4. Review `/api/assist` logs and audit events before reattempting deployment.
+## Known Limitation
+
+OpenAI live generation is unavailable or invalid in production. The assistant remains production-safe because deterministic fallback guidance is working and provider internals are not exposed.
+
+## Remaining Risks
+
+| Risk | Severity | Mitigation |
+|---|---:|---|
+| OpenAI provider key/model unavailable | P2 | Fix provider key/model when live generative responses are required; fallback remains active. |
+| Assistant response quality needs production tuning | P3 | Review user feedback and assistant usage analytics. |
+| Higher assistant usage may require rate-limit review | P3 | Monitor `/api/assist` volume and fallback rate. |
+
+## Rollback Criteria
+
+Rollback only for P0 or security-critical issues:
+
+- Secret, token, password, service role key, or private user data exposure.
+- Assistant bypasses employer approval, admin permission, or protected route rules.
+- Assistant executes unauthorized admin decisions or mutates data.
+- Assistant causes production health/readiness or authentication failures.
+
+No rollback is recommended for the current release.
 
 ## Final Recommendation
 
-**GO - AI Navigation Assistant fully validated in production protected dashboards.**
-
-No rollback is recommended.
+**GO - keep AI Navigation Assistant live in production.**
