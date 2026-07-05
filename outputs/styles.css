@@ -98,3 +98,31 @@ dialog:has(.ai-box){width:min(820px,calc(100% - 30px))}
 .tour-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}.tour-card{padding:16px;border:1px solid var(--line);border-radius:12px;background:#fff}.tour-card span{display:inline-grid;place-items:center;width:28px;height:28px;margin-bottom:10px;border-radius:8px;color:#fff;background:var(--green);font-size:12px;font-weight:900}.tour-card h3{margin:0 0 6px;font-size:15px}.tour-card p{margin:0;color:var(--muted);font-size:12px}
 @media(max-width:860px){.proof-grid,.pricing-grid,.faq-grid,.tour-grid{grid-template-columns:1fr}.social-proof-section,.pricing-section,.faq-section{width:calc(100% - 28px);padding:60px 0}.landing-footer>div{flex-wrap:wrap}}
 @media(max-width:760px){.notification-panel{right:14px;top:68px}.doc-shell h1{font-size:38px}.support-widget-button{right:14px;bottom:14px}.assistant-widget-button{right:104px;bottom:14px}.assistant-panel{right:14px;bottom:70px;max-height:calc(100vh - 90px)}}
+
+/* Product improvement sprint: commercial CTAs, journey guidance, proof placeholders */
+.hero-secondary-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.quick-cta-section{width:min(1120px,calc(100% - 40px));display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:0 auto;padding:22px;border:1px solid var(--line);border-radius:16px;background:#fff}
+.journey-section,.proof-section,.seo-section{width:min(1120px,calc(100% - 40px));margin:auto;padding:86px 0}
+.journey-grid,.service-grid,.proof-placeholder-grid,.seo-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.journey-grid article,.service-grid article,.proof-placeholder-grid article,.seo-grid article,.timeline-note,.market-guidance article{padding:22px;border:1px solid var(--line);border-radius:12px;background:#fff}
+.journey-grid article span{display:inline-grid;place-items:center;width:30px;height:30px;margin-bottom:13px;border-radius:9px;color:#fff;background:var(--green);font-size:12px;font-weight:900}
+.journey-grid h3,.service-grid h3,.proof-placeholder-grid h3,.seo-grid h3{margin:0 0 8px;font-size:18px;letter-spacing:-.02em}
+.journey-grid p,.service-grid p,.proof-placeholder-grid p,.seo-grid p,.timeline-note p,.market-guidance p{margin:0;color:var(--muted);font-size:14px;line-height:1.65}
+.timeline-note{margin-top:14px}.timeline-note strong,.market-guidance strong{display:block;margin-bottom:6px;color:var(--green);font-size:13px;text-transform:uppercase;letter-spacing:.6px}
+.employer-service-section{padding:86px max(7vw,30px);color:#fff;background:#183d29}
+.employer-service-section .section-intro{width:min(1120px,100%);margin-left:auto;margin-right:auto}
+.employer-service-section .section-intro>p:last-child,.employer-service-section .service-grid p{color:#dbe8df}
+.employer-service-section .service-grid{width:min(1120px,100%);margin:0 auto 22px}
+.employer-service-section .service-grid article{border-color:rgba(255,255,255,.18);background:rgba(255,255,255,.06)}
+.employer-service-section .service-grid h3{color:#fff}
+.employer-service-section .light-button{display:flex;width:max-content;margin:0 auto}
+.proof-placeholder-grid{grid-template-columns:repeat(5,1fr)}
+.proof-placeholder-grid article span{display:block;margin-bottom:9px;color:var(--green);font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.7px}
+.seo-grid{grid-template-columns:repeat(3,1fr)}
+.centered-actions{justify-content:center;flex-wrap:wrap}
+.market-guidance{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:18px 0}
+.market-filters{grid-template-columns:minmax(240px,1.35fr) minmax(145px,.7fr) minmax(130px,.58fr) minmax(130px,.55fr) minmax(130px,.55fr) minmax(150px,.65fr) minmax(150px,.65fr)}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid rgba(31,95,59,.34);outline-offset:3px}
+@media(max-width:1020px){.journey-grid,.service-grid{grid-template-columns:repeat(2,1fr)}.proof-placeholder-grid,.seo-grid{grid-template-columns:repeat(2,1fr)}.quick-cta-section{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:860px){.market-filters{grid-template-columns:1fr}.market-guidance{grid-template-columns:1fr}}
+@media(max-width:720px){.hero-secondary-actions,.centered-actions{align-items:stretch;flex-direction:column}.quick-cta-section,.journey-grid,.service-grid,.proof-placeholder-grid,.seo-grid{grid-template-columns:1fr}.journey-section,.proof-section,.seo-section{width:calc(100% - 28px);padding:60px 0}.employer-service-section{padding:64px 20px}.quick-cta-section{width:calc(100% - 28px)}}

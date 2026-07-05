@@ -246,17 +246,21 @@ function assistantFallback({ role, message, page, employer, candidate, admin, er
       lines.push('Sign in or create an employer workspace first. New employer accounts need admin approval before job posting.');
     }
     if (/logo|company|profile/.test(lower)) lines.push('To update your company profile or logo, open Employer Dashboard -> Company profile.');
-    if (/applicant|application|candidate/.test(lower)) lines.push('To view applicants, open Employer Dashboard -> Applications, then choose a candidate status.');
+    if (/applicant|application|candidate|pipeline/.test(lower)) lines.push('To view applicants, open Employer Dashboard -> Applications, then choose a candidate status.');
+    if (/consult|pricing|fee|engagement|search|leadership|mapping|partnership/.test(lower)) lines.push('For employer support, use Book a Consultation to discuss executive search, leadership hiring, market mapping, or recruitment partnership options.');
   } else if (role === 'candidate') {
     if (!candidate?.hasResume || /cv|resume|profile/.test(lower)) lines.push('To complete your profile, open Candidate Dashboard -> Resume & preferences, upload or paste your CV, add LinkedIn, and save your preferences.');
-    if (/apply|job/.test(lower)) lines.push('To apply, browse jobs, open a job detail, then use Apply. Upload a CV before submitting if you want stronger matching.');
+    if (/apply|job|filter|discover|find|search/.test(lower)) lines.push('To discover roles, open Find Jobs and filter by keyword, location, function, seniority, work style, and industry. Open a job detail, then use Apply.');
+    if (/interview|process|timeline|after|response/.test(lower)) lines.push('After you apply, employers review the application in their dashboard and update status through applied, shortlisted, interview, offered, rejected, hired, or withdrawn.');
+    if (/career|support|coach|guide/.test(lower)) lines.push('For career support, keep your CV and LinkedIn current, set preferences, and use the resume assistant for role-focused positioning.');
     if (candidate?.applicationCount) lines.push('You can track submitted applications in Candidate Dashboard -> Applications.');
     else lines.push('Start by browsing jobs, saving roles you like, and uploading your CV.');
   } else if (role === 'admin') {
     lines.push('Use the admin dashboard for guidance only: review pending employers in Employer approval queue, moderate reviews, check feedback inbox, and monitor platform health.');
     if (/approve|employer/.test(lower)) lines.push('To approve an employer, open Admin Dashboard -> Employer approval queue and use Approve, Reject, or Suspend. The assistant cannot make that decision for you.');
   } else {
-    lines.push('Welcome to Crossover Talent. Employers can create a workspace and post jobs after approval. Job seekers can browse jobs, upload CVs, save roles, and track applications.');
+    lines.push('Welcome to Crossover Talent. Job seekers can find jobs, submit a CV, save roles, and track applications. Employers can hire talent through a workspace or book a consultation.');
+    if (/japan|india|asia|executive|saas|ai|fintech/.test(lower)) lines.push('The platform is positioned for Japan, India, and Asia hiring across climate, impact investment, public healthcare, SaaS, AI, fintech, and environmental services.');
     if (/support|help|contact/.test(lower)) lines.push('Use Contact support for account, hiring, or beta issues.');
   }
   if (errorText) lines.push(`Current page message: ${errorText}`);

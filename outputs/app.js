@@ -1,5 +1,5 @@
 const LIVE_ORIGIN = 'https://build-me-a-simple-website-where.vercel.app';
-const state = { user: null, candidate: null, admin: null, adminData: null, companyProfile: null, candidateApplications: [], myReviews: [], jobs: [], applications: [], publicJobs: [], publicReviews: [], publicSalarySignals: [], salaryAggregates: [], notifications: [], publicTab: 'jobs', view: 'overview', candidateView: 'overview', authMode: 'login', candidateAuthMode: 'login', adminAuthMode: 'login', search: '', candidateSearch: '', publicSearch: '', sector: '', location: '', level: '', workType: '', pages: { jobs: 1, applications: 1, publicJobs: 1, publicReviews: 1, publicSalaries: 1, admin: 1 }, pageSize: 10 };
+const state = { user: null, candidate: null, admin: null, adminData: null, companyProfile: null, candidateApplications: [], myReviews: [], jobs: [], applications: [], publicJobs: [], publicReviews: [], publicSalarySignals: [], salaryAggregates: [], notifications: [], publicTab: 'jobs', view: 'overview', candidateView: 'overview', authMode: 'login', candidateAuthMode: 'login', adminAuthMode: 'login', search: '', candidateSearch: '', publicSearch: '', sector: '', location: '', level: '', workType: '', functionFilter: '', industry: '', pages: { jobs: 1, applications: 1, publicJobs: 1, publicReviews: 1, publicSalaries: 1, admin: 1 }, pageSize: 10 };
 let liveSyncTimer;
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -255,11 +255,25 @@ function assistantContext() {
   };
 }
 
-function assistantPrompts(role = currentAssistantRole()) {
-  if (role === 'employer') return ['How do I post my first job?', 'Why can’t I access my employer dashboard?', 'How do I upload my company logo?', 'How do I view applicants?'];
-  if (role === 'candidate') return ['How do I upload my CV?', 'How do I apply to a job?', 'Where can I see my application status?', 'How do I save jobs?'];
+function assistantPrompts(role = currentAssistantRole(), page = currentAssistantPage()) {
+  if (role === 'employer') {
+    if (page === 'employer-company') return ['How do I improve my company profile?', 'How do I upload or replace our logo?', 'What proof should employers add?', 'How do I book hiring support?'];
+    if (page === 'employer-jobs') return ['How do I post a stronger job?', 'What should I put in KPI and KRA?', 'How do I publish or close a job?', 'How can Crossover support leadership hiring?'];
+    if (page === 'employer-applications') return ['How do I review applicants?', 'How should I update candidate status?', 'What is the candidate pipeline?', 'How do I contact support about hiring?'];
+    return ['How do I post my first job?', 'What engagement model is right for us?', 'How does employer approval work?', 'How do I book a consultation?'];
+  }
+  if (role === 'candidate') {
+    if (page === 'candidate-resume') return ['How do I improve my CV?', 'What should I include for impact roles?', 'How do I add LinkedIn?', 'Can AI revise my resume safely?'];
+    if (page === 'candidate-saved') return ['How do I compare saved jobs?', 'How do I set job alerts?', 'Which roles fit my preferences?', 'How do I apply from saved jobs?'];
+    if (page === 'candidate-applications') return ['Where can I see application status?', 'What happens after I apply?', 'Can I withdraw an application?', 'How long does hiring usually take?'];
+    if (page.startsWith('marketplace')) return ['How do I find relevant jobs?', 'How do I use filters?', 'How do I save jobs?', 'What happens after I apply?'];
+    return ['How do I upload my CV?', 'How do I apply to a job?', 'Where can I see my application status?', 'How do I get career support?'];
+  }
   if (role === 'admin') return ['Where do I approve employers?', 'How do I moderate reviews?', 'How do I check platform health?', 'How do I view feedback?'];
-  return ['What should I do first?', 'I am an employer. How do I start?', 'I am looking for jobs. Where do I go?', 'How do I contact support?'];
+  if (page.startsWith('marketplace')) return ['What should I do first?', 'How do I find climate or impact jobs?', 'How do I submit my CV?', 'What happens after I apply?'];
+  if (page === 'login') return ['Why can’t I post a job yet?', 'How does employer approval work?', 'What hiring support is available?', 'How do I contact support?'];
+  if (page === 'candidate-login') return ['How do I create a candidate account?', 'How do I submit my CV?', 'Can I track applications?', 'How do I get career support?'];
+  return ['Find jobs in Asia', 'Hire talent for impact roles', 'Book a consultation', 'Submit my CV'];
 }
 
 function saveAssistantHistory() {
@@ -809,19 +823,29 @@ function publicMatches(item) {
   const haystack = `${item.title || ''} ${item.company || ''} ${item.location || ''} ${item.department || ''} ${item.sector || ''} ${item.impactArea || ''} ${item.role || ''} ${item.headline || ''} ${item.level || ''} ${item.type || ''} ${item.workType || ''}`.toLowerCase();
   const queryMatch = !state.publicSearch || haystack.includes(state.publicSearch.toLowerCase());
   const sectorMatch = !state.sector || item.sector === state.sector || (item.sectors || []).includes(state.sector);
+  const industryMatch = !state.industry || state.industry === 'SaaS / AI / Fintech' ? (!state.industry || /saas|ai|fintech|technology|software|data|product/i.test(haystack)) : (item.sector === state.industry || (item.sectors || []).includes(state.industry));
   const locationMatch = !state.location || item.location === state.location || (item.locations || []).includes(state.location);
   const levelMatch = !state.level || item.experience === state.level || item.level === state.level;
   const typeMatch = !state.workType || item.type === state.workType || item.workType === state.workType;
-  return queryMatch && sectorMatch && locationMatch && levelMatch && typeMatch;
+  const functionMatch = !state.functionFilter || item.department === state.functionFilter || item.role === state.functionFilter || haystack.includes(state.functionFilter.toLowerCase());
+  return queryMatch && sectorMatch && industryMatch && locationMatch && levelMatch && typeMatch && functionMatch;
 }
 
-function updateLocationFilter() {
-  const select = $('#location-filter');
-  const current = select.value;
+function updatePublicFilterOptions() {
+  const locationSelect = $('#location-filter');
+  const functionSelect = $('#function-filter');
+  const currentLocation = locationSelect.value;
+  const currentFunction = functionSelect?.value || '';
   const locations = [...new Set([...state.publicJobs.map((job) => job.location), ...state.publicReviews.map((review) => review.location), ...state.publicSalarySignals.map((signal) => signal.location)].filter(Boolean))].sort();
-  select.innerHTML = '<option value="">All locations</option>' + locations.map((location) => `<option>${escapeHtml(location)}</option>`).join('');
-  select.value = locations.includes(current) ? current : '';
-  state.location = select.value;
+  const functions = [...new Set([...state.publicJobs.map((job) => job.department), ...state.publicReviews.map((review) => review.role), ...state.publicSalarySignals.map((signal) => signal.role)].filter(Boolean))].sort();
+  locationSelect.innerHTML = '<option value="">All locations</option>' + locations.map((location) => `<option>${escapeHtml(location)}</option>`).join('');
+  locationSelect.value = locations.includes(currentLocation) ? currentLocation : '';
+  state.location = locationSelect.value;
+  if (functionSelect) {
+    functionSelect.innerHTML = '<option value="">All functions</option>' + functions.map((item) => `<option>${escapeHtml(item)}</option>`).join('');
+    functionSelect.value = functions.includes(currentFunction) ? currentFunction : '';
+    state.functionFilter = functionSelect.value;
+  }
 }
 
 function renderMarketSummary() {
@@ -936,7 +960,7 @@ async function loadPublicJobs() {
       $('#public-title').innerHTML = 'Explore impact roles,<br />companies, and reviews.';
       $('#public-subtitle').textContent = 'Browse live opportunities and workplace signals across climate, impact investment, public healthcare, agriculture, water, education, clean energy, foundations, circular economy, CSR, and ESG consulting.';
     }
-    updateLocationFilter();
+    updatePublicFilterOptions();
     renderMarketplace();
     const directJob = params.get('job');
     if (directJob && state.publicJobs.some((job) => String(job.id) === directJob)) openJobDetail(directJob);
@@ -1338,8 +1362,10 @@ $('#support-form').addEventListener('submit', async (event) => {
 $('#auth-switch').addEventListener('click', () => setAuthMode(state.authMode === 'login' ? 'register' : 'login'));
 $('#candidate-auth-switch').addEventListener('click', () => setCandidateAuthMode(state.candidateAuthMode === 'login' ? 'register' : 'login'));
 ['#landing-login', '#footer-login'].forEach((selector) => $(selector).addEventListener('click', () => openAuth('login')));
-['#landing-start', '#hero-start', '#feature-start', '#cta-start'].forEach((selector) => $(selector).addEventListener('click', () => openAuth('register')));
-['#landing-jobs-link', '#hero-jobs', '#footer-jobs', '#browse-jobs-button'].forEach((selector) => $(selector).addEventListener('click', openJobs));
+['#landing-start', '#hero-hire-talent', '#quick-hire-talent', '#feature-start', '#cta-hire-talent'].forEach((selector) => $(selector).addEventListener('click', () => openAuth('register')));
+['#landing-jobs-link', '#hero-find-jobs', '#quick-find-jobs', '#cta-find-jobs', '#footer-jobs', '#browse-jobs-button'].forEach((selector) => $(selector).addEventListener('click', openJobs));
+['#hero-submit-cv', '#quick-submit-cv'].forEach((selector) => $(selector).addEventListener('click', () => openCandidateAuth('register')));
+['#hero-book-consultation', '#quick-book-consultation', '#service-book-consultation', '#cta-consultation', '#footer-contact'].forEach((selector) => $(selector).addEventListener('click', () => $('#support-dialog').showModal()));
 ['#landing-candidate-login', '#candidate-login-button'].forEach((selector) => $(selector).addEventListener('click', () => openCandidateAuth('login')));
 $('#pricing-candidate')?.addEventListener('click', () => openCandidateAuth('register'));
 $('#pricing-employer')?.addEventListener('click', () => openAuth('register'));
@@ -1373,6 +1399,8 @@ $('#sector-filter').addEventListener('change', (event) => { state.sector = event
 $('#location-filter').addEventListener('change', (event) => { state.location = event.target.value; resetPage(pageKeyForPublic()); renderMarketplace(); });
 $('#level-filter').addEventListener('change', (event) => { state.level = event.target.value; resetPage(pageKeyForPublic()); renderMarketplace(); });
 $('#type-filter').addEventListener('change', (event) => { state.workType = event.target.value; resetPage(pageKeyForPublic()); renderMarketplace(); });
+$('#function-filter')?.addEventListener('change', (event) => { state.functionFilter = event.target.value; resetPage(pageKeyForPublic()); renderMarketplace(); });
+$('#industry-filter')?.addEventListener('change', (event) => { state.industry = event.target.value; resetPage(pageKeyForPublic()); renderMarketplace(); });
 $$('[data-public-tab]').forEach((button) => button.addEventListener('click', () => { state.publicTab = button.dataset.publicTab; resetPage(pageKeyForPublic()); renderMarketplace(); }));
 $$('[data-close]').forEach((button) => button.addEventListener('click', () => $(`#${button.dataset.close}`).close()));
 $$('.nav-item[data-view]').forEach((item) => item.addEventListener('click', () => setView(item.dataset.view)));
