@@ -472,7 +472,7 @@ export async function openAiChat({ system, user, fallback, model = process.env.O
     return { text: data.choices?.[0]?.message?.content?.trim() || fallback, fallback: false, model };
   } catch (error) {
     await auditLog('ai.fallback', { entityType: 'ai_request', metadata: { error: error.message, model } });
-    return { text: fallback, fallback: true, reason: error.name === 'AbortError' ? 'AI request timed out' : error.message };
+    return { text: fallback, fallback: true, reason: error.name === 'AbortError' ? 'AI request timed out' : 'AI provider unavailable' };
   } finally {
     clearTimeout(timeout);
   }
