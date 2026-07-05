@@ -436,6 +436,21 @@
   </dialog>
 
   <button id="support-widget-button" class="support-widget-button" type="button">Support</button>
+  <button id="assistant-widget-button" class="assistant-widget-button" type="button" aria-haspopup="dialog" aria-expanded="false">AI guide</button>
+  <section id="assistant-panel" class="assistant-panel hidden" aria-label="AI navigation assistant">
+    <div class="assistant-header">
+      <div><p class="eyebrow">Navigation assistant</p><h2>What should I do next?</h2></div>
+      <button id="assistant-close" class="close-button" type="button" aria-label="Close assistant">×</button>
+    </div>
+    <div id="assistant-suggestions" class="assistant-suggestions" aria-label="Suggested prompts"></div>
+    <div id="assistant-messages" class="assistant-messages" aria-live="polite"></div>
+    <form id="assistant-form" class="assistant-form">
+      <label class="sr-only" for="assistant-input">Ask the assistant</label>
+      <input id="assistant-input" name="message" autocomplete="off" placeholder="Ask how to post a job, upload CV, apply, or get approved..." />
+      <button class="button primary" type="submit">Ask</button>
+    </form>
+    <p class="assistant-disclaimer">Guidance only. The assistant cannot approve employers, change records, or bypass permissions.</p>
+  </section>
   <dialog id="support-dialog">
     <form id="support-form">
       <div class="dialog-header"><div><p class="eyebrow">Beta support</p><h2>Tell us what happened</h2><p class="muted">Send feedback, report a bug, contact support, or request a feature.</p></div><button type="button" class="close-button" data-close="support-dialog">×</button></div>

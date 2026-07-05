@@ -1,4 +1,4 @@
-import { allowStorageFallback, auditLog, assertSameOrigin, ensureStorage, forbidden, openAiChat, productEvent, rateLimit, requireSession, serverError, setSecurityHeaders, stableHash, tooManyRequests, uploadPrivateFile, writeRecord } from './_lib.js';
+import { allowStorageFallback, auditLog, assertSameOrigin, employerStatus, employerStatusMessage, ensureStorage, forbidden, listRecords, openAiChat, productEvent, rateLimit, readRecord, readSession, requireSession, serverError, setSecurityHeaders, stableHash, tooManyRequests, uploadPrivateFile, writeRecord } from './_lib.js';
 import mammoth from 'mammoth';
 import { randomUUID } from 'node:crypto';
 
@@ -192,6 +192,133 @@ function linkedinProfile(input = {}) {
   };
 }
 
+function assistantActions(role = 'public', context = {}) {
+  const base = [
+    { label: 'Browse jobs', href: '/?jobs=1' },
+    { label: 'Contact support', href: '/contact.html' }
+  ];
+  if (role === 'employer') {
+    return [
+      { label: 'Go to dashboard', href: '/?dashboard=1' },
+      { label: 'Post a job', action: 'employer-jobs' },
+      { label: 'View applications', action: 'employer-applications' },
+      { label: 'Update company profile', action: 'employer-profile' },
+      ...base
+    ];
+  }
+  if (role === 'candidate') {
+    return [
+      { label: 'Candidate dashboard', href: '/?candidate=dashboard' },
+      { label: 'Upload CV', action: 'candidate-resume' },
+      { label: 'Saved jobs', action: 'candidate-saved' },
+      { label: 'Track applications', action: 'candidate-applications' },
+      ...base
+    ];
+  }
+  if (role === 'admin') {
+    return [
+      { label: 'Admin dashboard', href: '/?admin=1' },
+      { label: 'Employer approvals', action: 'admin-employers' },
+      { label: 'Review moderation', action: 'admin-reviews' },
+      { label: 'Feedback inbox', action: 'admin-feedback' },
+      { label: 'Platform health', action: 'admin-health' },
+      { label: 'Contact support', href: '/contact.html' }
+    ];
+  }
+  if (context.page === 'login') return [{ label: 'Create employer account', href: '/?register=1' }, { label: 'Job seeker sign in', href: '/?candidate=login' }, ...base];
+  return [{ label: 'Employer portal', href: '/?login=1' }, { label: 'Job seeker sign in', href: '/?candidate=login' }, ...base];
+}
+
+function assistantFallback({ role, message, page, employer, candidate, admin, errorText }) {
+  const lower = `${message} ${page} ${errorText}`.toLowerCase();
+  const lines = [];
+  if (role === 'employer') {
+    const status = employer?.status || 'unknown';
+    if (status === 'pending_review') {
+      lines.push('Your employer account is under review. You can update your company profile, but job posting becomes available after admin approval.');
+    } else if (status === 'rejected') {
+      lines.push(`Your employer registration was not approved${employer?.rejectionReason ? `: ${employer.rejectionReason}` : '.'} Contact support if you want us to review it again.`);
+    } else if (status === 'suspended') {
+      lines.push('Your employer account is suspended. Contact support before trying to post jobs or review applicants.');
+    } else if (status === 'approved') {
+      lines.push('Your employer account is approved. Go to Employer Dashboard, open Jobs, then choose Create Job to post a role.');
+    } else {
+      lines.push('Sign in or create an employer workspace first. New employer accounts need admin approval before job posting.');
+    }
+    if (/logo|company|profile/.test(lower)) lines.push('To update your company profile or logo, open Employer Dashboard -> Company profile.');
+    if (/applicant|application|candidate/.test(lower)) lines.push('To view applicants, open Employer Dashboard -> Applications, then choose a candidate status.');
+  } else if (role === 'candidate') {
+    if (!candidate?.hasResume || /cv|resume|profile/.test(lower)) lines.push('To complete your profile, open Candidate Dashboard -> Resume & preferences, upload or paste your CV, add LinkedIn, and save your preferences.');
+    if (/apply|job/.test(lower)) lines.push('To apply, browse jobs, open a job detail, then use Apply. Upload a CV before submitting if you want stronger matching.');
+    if (candidate?.applicationCount) lines.push('You can track submitted applications in Candidate Dashboard -> Applications.');
+    else lines.push('Start by browsing jobs, saving roles you like, and uploading your CV.');
+  } else if (role === 'admin') {
+    lines.push('Use the admin dashboard for guidance only: review pending employers in Employer approval queue, moderate reviews, check feedback inbox, and monitor platform health.');
+    if (/approve|employer/.test(lower)) lines.push('To approve an employer, open Admin Dashboard -> Employer approval queue and use Approve, Reject, or Suspend. The assistant cannot make that decision for you.');
+  } else {
+    lines.push('Welcome to Crossover Talent. Employers can create a workspace and post jobs after approval. Job seekers can browse jobs, upload CVs, save roles, and track applications.');
+    if (/support|help|contact/.test(lower)) lines.push('Use Contact support for account, hiring, or beta issues.');
+  }
+  if (errorText) lines.push(`Current page message: ${errorText}`);
+  lines.push('I can guide navigation, explain workflow status, and point you to the right screen, but I cannot bypass approval gates or perform admin actions.');
+  return lines.join('\n\n');
+}
+
+async function navigationAssistant(request, input = {}) {
+  const session = readSession(request);
+  const clientContext = input.context || {};
+  let role = session?.role || clean(clientContext.role || 'public', 30).toLowerCase();
+  const page = clean(clientContext.page || input.page || '', 80);
+  const message = truncate(input.message || input.prompt || 'What should I do next?', 1000);
+  const errorText = truncate(clientContext.errorText || '', 500);
+  const context = { page };
+  let employer = null;
+  let candidate = null;
+  let admin = null;
+
+  if (session?.role === 'employer') {
+    const account = await readRecord(`accounts/${stableHash(session.email)}.json`);
+    if (account) {
+      const status = employerStatus(account);
+      employer = { status, rejectionReason: account.rejection_reason || '', message: employerStatusMessage(account), hasCompany: Boolean(account.company), approved: status === 'approved' };
+      role = 'employer';
+    }
+  } else if (session?.role === 'candidate') {
+    const record = await readRecord(`candidates/${stableHash(session.email)}.json`);
+    if (record) {
+      const applications = (await listRecords('companies/')).filter((item) => item.recordType === 'application' && item.email === record.email);
+      candidate = { hasResume: Boolean(record.resume), hasLinkedin: Boolean(record.linkedin), hasPreferences: Boolean(record.preferences?.idealRole || record.preferences?.location), savedJobs: (record.savedJobs || []).length, applicationCount: applications.length };
+      role = 'candidate';
+    }
+  } else if (session?.role === 'admin') {
+    const record = await readRecord(`admins/${stableHash(session.email)}.json`);
+    if (record && !record.disabled) {
+      admin = { verified: Boolean(record.emailVerified) };
+      role = 'admin';
+    }
+  } else if (['employer', 'candidate', 'admin'].includes(clientContext.role)) {
+    role = clientContext.role;
+  } else {
+    role = 'public';
+  }
+
+  const fallback = assistantFallback({ role, message, page, employer, candidate, admin, errorText });
+  const actions = assistantActions(role, { page });
+  const system = [
+    'You are the Crossover Talent navigation assistant.',
+    'Guide employers, candidates, and admins through workflows using short practical steps.',
+    'Never reveal secrets, private records, service role keys, or environment variables.',
+    'Do not provide authoritative legal, medical, visa, or financial advice.',
+    'Do not perform admin actions, database writes, approvals, or permission bypasses through chat.',
+    'Respect employer approval status and route users to support when blocked.'
+  ].join(' ');
+  const user = JSON.stringify({ role, page, message, employer, candidate, admin, errorText, requestedFormat: 'Return concise guidance with numbered steps and mention relevant buttons/pages.' });
+  const generated = await openAiChat({ system, user, fallback, timeoutMs: 9000 });
+  await auditLog('ai.navigation_assistant', { actorEmail: session?.email || '', entityType: 'ai_request', metadata: { role, page, fallback: generated.fallback, reason: generated.reason || '' } });
+  await productEvent('ai_navigation_assistant', { actorEmail: session?.email || '', entityType: 'ai_request', metadata: { role, page, fallback: generated.fallback } });
+  return { reply: generated.text, actions, role, fallback: generated.fallback, fallbackReason: generated.reason || '', guardrails: ['Guidance only', 'No private data', 'No approval bypass', 'No admin actions through chat'] };
+}
+
 export default async function handler(request, response) {
   try {
     response.setHeader('Cache-Control', 'no-store');
@@ -202,6 +329,10 @@ export default async function handler(request, response) {
     if (!(await rateLimit(request, 'assist', 40, 60 * 1000))) return tooManyRequests(response);
 
     const { action, file, ...input } = request.body || {};
+    if (action === 'navigation-assistant') {
+      const result = await navigationAssistant(request, input);
+      return response.json(result);
+    }
     if (action === 'parse-document') {
       const buffer = decodeUpload(file);
       assertFileSignature(file, buffer);

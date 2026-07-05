@@ -3,6 +3,7 @@ const state = { user: null, candidate: null, admin: null, adminData: null, compa
 let liveSyncTimer;
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
+const assistantHistory = JSON.parse(sessionStorage.getItem('ct_assistant_history') || '[]').slice(-8);
 
 function escapeHtml(value = '') {
   return String(value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
@@ -210,6 +211,132 @@ function showEmployerStatusNotice(selector, error) {
   if (!target) return;
   const status = employerStatusLabel(error.employer_status);
   target.innerHTML = `<strong>${escapeHtml(status)}</strong> · ${escapeHtml(error.message || error.error || 'Your employer account requires admin review before dashboard access.')}${error.rejection_reason ? ` <span>${escapeHtml(error.rejection_reason)}</span>` : ''} <a href="/contact.html">Contact support</a>`;
+}
+
+function currentAssistantRole() {
+  if (state.admin) return 'admin';
+  if (state.user) return 'employer';
+  if (state.candidate) return 'candidate';
+  if (!$('#admin-screen')?.classList.contains('hidden')) return 'admin';
+  if (!$('#candidate-app')?.classList.contains('hidden') || !$('#candidate-auth-screen')?.classList.contains('hidden')) return 'candidate';
+  if (!$('#app')?.classList.contains('hidden') || !$('#auth-screen')?.classList.contains('hidden')) return 'employer';
+  return 'public';
+}
+
+function currentAssistantPage() {
+  if (!$('#admin-screen')?.classList.contains('hidden')) return 'admin';
+  if (!$('#candidate-app')?.classList.contains('hidden')) return `candidate-${state.candidateView}`;
+  if (!$('#app')?.classList.contains('hidden')) return `employer-${state.view}`;
+  if (!$('#jobs-screen')?.classList.contains('hidden')) return `marketplace-${state.publicTab}`;
+  if (!$('#auth-screen')?.classList.contains('hidden')) return 'login';
+  if (!$('#candidate-auth-screen')?.classList.contains('hidden')) return 'candidate-login';
+  return 'landing';
+}
+
+function assistantContext() {
+  const visibleError = ['#auth-subtitle', '#candidate-auth-subtitle', '#admin-auth-message', '#cv-parse-status', '#jd-parse-status']
+    .map((selector) => $(selector)?.innerText || '')
+    .find((text) => /review|reject|suspend|verify|error|failed|not enabled|not configured/i.test(text)) || '';
+  return {
+    url: location.pathname + location.search,
+    page: currentAssistantPage(),
+    role: currentAssistantRole(),
+    loginStatus: Boolean(state.user || state.candidate || state.admin),
+    employerStatus: state.user?.employer_status || '',
+    candidateProfile: state.candidate ? {
+      hasResume: Boolean(state.candidate.resume),
+      hasLinkedin: Boolean(state.candidate.linkedin),
+      savedJobs: (state.candidate.savedJobs || []).length,
+      applications: state.candidateApplications.length,
+      preferences: state.candidate.preferences || {}
+    } : null,
+    adminLoaded: Boolean(state.adminData),
+    errorText: visibleError
+  };
+}
+
+function assistantPrompts(role = currentAssistantRole()) {
+  if (role === 'employer') return ['How do I post my first job?', 'Why can’t I access my employer dashboard?', 'How do I upload my company logo?', 'How do I view applicants?'];
+  if (role === 'candidate') return ['How do I upload my CV?', 'How do I apply to a job?', 'Where can I see my application status?', 'How do I save jobs?'];
+  if (role === 'admin') return ['Where do I approve employers?', 'How do I moderate reviews?', 'How do I check platform health?', 'How do I view feedback?'];
+  return ['What should I do first?', 'I am an employer. How do I start?', 'I am looking for jobs. Where do I go?', 'How do I contact support?'];
+}
+
+function saveAssistantHistory() {
+  sessionStorage.setItem('ct_assistant_history', JSON.stringify(assistantHistory.slice(-8)));
+}
+
+function actionButtonHtml(action) {
+  if (action.href) {
+    const href = String(action.href || '').startsWith('/') ? action.href : '/contact.html';
+    return `<a href="${escapeHtml(href)}">${escapeHtml(action.label)}</a>`;
+  }
+  return `<button type="button" data-assistant-action="${escapeHtml(action.action || '')}">${escapeHtml(action.label)}</button>`;
+}
+
+function assistantMessageClass(from = 'assistant') {
+  return ['user', 'assistant', 'error'].includes(from) ? from : 'assistant';
+}
+
+function renderAssistant() {
+  const suggestions = $('#assistant-suggestions');
+  const messages = $('#assistant-messages');
+  if (!suggestions || !messages) return;
+  suggestions.innerHTML = assistantPrompts().map((prompt) => `<button type="button" class="assistant-chip" data-assistant-prompt="${escapeHtml(prompt)}">${escapeHtml(prompt)}</button>`).join('');
+  messages.innerHTML = assistantHistory.length ? assistantHistory.map((item) => {
+    const actions = item.actions?.length ? `<div class="assistant-actions">${item.actions.map(actionButtonHtml).join('')}</div>` : '';
+    return `<article class="assistant-message ${assistantMessageClass(item.from)}">${escapeHtml(item.text)}${actions}</article>`;
+  }).join('') : `<article class="assistant-message">Hi, I’m your Crossover Talent guide. Ask me where to go next, how to complete a workflow, or why an account status is blocking an action.</article>`;
+  messages.scrollTop = messages.scrollHeight;
+  $$('[data-assistant-prompt]').forEach((button) => button.addEventListener('click', () => submitAssistantPrompt(button.dataset.assistantPrompt)));
+  $$('[data-assistant-action]').forEach((button) => button.addEventListener('click', () => runAssistantAction(button.dataset.assistantAction)));
+}
+
+function addAssistantMessage(from, text, actions = []) {
+  assistantHistory.push({ from, text, actions: actions.slice(0, 5), at: new Date().toISOString() });
+  while (assistantHistory.length > 8) assistantHistory.shift();
+  saveAssistantHistory();
+  renderAssistant();
+}
+
+function runAssistantAction(action) {
+  if (action === 'employer-jobs') return setView('jobs');
+  if (action === 'employer-applications') return setView('applications');
+  if (action === 'employer-profile') return setView('company');
+  if (action === 'candidate-resume') return setCandidateView('resume');
+  if (action === 'candidate-saved') return setCandidateView('saved');
+  if (action === 'candidate-applications') return setCandidateView('applications');
+  if (action === 'admin-employers' || action === 'admin-reviews' || action === 'admin-feedback' || action === 'admin-health') return loadAdminDashboard();
+  toast('Open the suggested page to continue');
+}
+
+function toggleAssistant(open = null) {
+  const panel = $('#assistant-panel');
+  const button = $('#assistant-widget-button');
+  const shouldOpen = open ?? panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !shouldOpen);
+  button.setAttribute('aria-expanded', String(shouldOpen));
+  if (shouldOpen) {
+    renderAssistant();
+    $('#assistant-input')?.focus();
+  }
+}
+
+async function submitAssistantPrompt(prompt) {
+  const message = String(prompt || $('#assistant-input')?.value || '').trim();
+  if (!message) return;
+  $('#assistant-input').value = '';
+  addAssistantMessage('user', message);
+  const submit = $('#assistant-form button[type="submit"]');
+  if (submit) submit.disabled = true;
+  try {
+    const response = await api('/api/assist', { method: 'POST', body: JSON.stringify({ action: 'navigation-assistant', message, context: assistantContext(), history: assistantHistory.slice(-6) }) });
+    addAssistantMessage(response.fallback ? 'assistant' : 'assistant', response.reply, response.actions || []);
+  } catch (error) {
+    addAssistantMessage('error', `${error.message || 'Assistant is unavailable.'}\n\nYou can still contact support or use the suggested prompts to navigate manually.`, [{ label: 'Contact support', href: '/contact.html' }]);
+  } finally {
+    if (submit) submit.disabled = false;
+  }
 }
 
 async function startProviderLogin(provider, role) {
@@ -1261,6 +1388,12 @@ $('#admin-search')?.addEventListener('input', () => { resetPage('admin'); render
 $('#admin-logout-button')?.addEventListener('click', async () => { await api('/api/admin', { method: 'DELETE' }); state.admin = null; state.adminData = null; renderAdminLogin(); toast('Signed out'); });
 $$('[data-auth-provider]').forEach((button) => button.addEventListener('click', () => startProviderLogin(button.dataset.authProvider, button.dataset.authRole)));
 $$('[data-phone-otp-role]').forEach((button) => button.addEventListener('click', () => startPhoneOtp(button.dataset.phoneOtpRole, button.dataset.phoneField)));
+$('#assistant-widget-button')?.addEventListener('click', () => toggleAssistant());
+$('#assistant-close')?.addEventListener('click', () => toggleAssistant(false));
+$('#assistant-form')?.addEventListener('submit', (event) => {
+  event.preventDefault();
+  submitAssistantPrompt();
+});
 
 async function init() {
   const params = new URLSearchParams(location.search);

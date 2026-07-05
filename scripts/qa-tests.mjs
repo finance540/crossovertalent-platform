@@ -99,6 +99,19 @@ includes('ops', /employerStatusMessage\(updated\)/, 'provider employer login sti
 includes('ops', /AUTH_GOOGLE_ENABLED/, 'Google provider config gate exists');
 includes('ops', /AUTH_LINKEDIN_ENABLED/, 'LinkedIn provider config gate exists');
 includes('ops', /AUTH_PHONE_OTP_ENABLED/, 'phone OTP provider config gate exists');
+includes('html', /id="assistant-widget-button"/, 'AI navigation assistant widget renders globally');
+includes('html', /id="assistant-panel"/, 'AI navigation assistant panel exists');
+includes('app', /assistantPrompts/, 'assistant suggested prompts change by role');
+includes('app', /assistantContext/, 'assistant collects page and role context');
+includes('app', /currentAssistantRole/, 'assistant detects public, employer, candidate, and admin context');
+includes('app', /submitAssistantPrompt/, 'assistant chat submit is wired');
+includes('app', /data-assistant-action/, 'assistant guided CTA actions are rendered');
+includes('assist', /action === 'navigation-assistant'/, 'assistant API action exists');
+includes('assist', /assistantFallback/, 'assistant safe fallback works without OpenAI');
+includes('assist', /Your employer account is under review/, 'pending employer guidance exists');
+includes('assist', /Do not perform admin actions/, 'assistant guardrail prevents admin actions through chat');
+includes('assist', /Never reveal secrets/, 'assistant guardrail prevents secret exposure');
+includes('assist', /role === 'admin'/, 'assistant admin guidance is role-aware');
 
 includes('jobs', /request\.method === 'POST'/, 'job posting route exists');
 includes('jobs', /request\.method === 'PATCH'/, 'job edit and publish route exists');

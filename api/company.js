@@ -9,6 +9,7 @@ function clean(value = '') {
 }
 
 function publicProfile(profile = {}, session = {}) {
+  profile = profile || {};
   return {
     recordType: 'company_profile',
     companyId: session.companyId || profile.companyId,

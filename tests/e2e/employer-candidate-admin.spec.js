@@ -1,6 +1,38 @@
 import { test, expect } from '@playwright/test';
 import { api, parseTxtUpload, password, registerVerifyLogin, uniqueEmail } from './fixtures.js';
 
+async function expectAssistantPrompt(page, prompt) {
+  const button = page.locator('#assistant-widget-button');
+  await expect(button).toBeVisible();
+  await button.click();
+  await expect(page.locator('#assistant-panel')).toBeVisible();
+  await expect(page.locator('#assistant-suggestions')).toContainText(prompt);
+  await page.locator('#assistant-close').click();
+}
+
+async function loginInBrowser(page, endpoint, body) {
+  await page.goto('/');
+  const result = await page.evaluate(async ({ endpoint: loginEndpoint, body: loginBody }) => {
+    const response = await fetch(loginEndpoint, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(loginBody)
+    });
+    const session = await fetch(loginEndpoint, { credentials: 'include' });
+    return {
+      ok: response.ok,
+      status: response.status,
+      data: await response.json().catch(() => ({})),
+      sessionOk: session.ok,
+      sessionStatus: session.status,
+      sessionData: await session.json().catch(() => ({}))
+    };
+  }, { endpoint, body });
+  expect(result.ok, JSON.stringify(result)).toBeTruthy();
+  expect(result.sessionOk, JSON.stringify(result)).toBeTruthy();
+}
+
 test.describe.serial('Crossover Talent E2E release candidate workflows', () => {
   const stamp = Date.now();
   const employerEmail = uniqueEmail('e2e-employer');
@@ -68,6 +100,10 @@ test.describe.serial('Crossover Talent E2E release candidate workflows', () => {
     expect(employer.response.ok()).toBeTruthy();
     expect(employer.data.user.employer_status).toBe('approved');
     employerCookie = employer.cookie;
+    await loginInBrowser(page, '/api/auth', { action: 'login', email: employerEmail, password });
+    await page.goto('/?dashboard=1');
+    await expect(page.locator('#app')).toBeVisible();
+    await expectAssistantPrompt(page, 'How do I post my first job?');
 
     const rejectedEmail = uniqueEmail('e2e-rejected-employer');
     const rejected = await api(request, '/api/auth', {
@@ -156,7 +192,7 @@ test.describe.serial('Crossover Talent E2E release candidate workflows', () => {
     });
     const pendingPost = await api(request, '/api/jobs', {
       method: 'POST',
-      cookie: pendingSession.cookie,
+      cookie: pendingSession.cookie || 'rb_session=',
       body: {
         title: 'Should not post',
         department: 'Climate',
@@ -256,6 +292,7 @@ test.describe.serial('Crossover Talent E2E release candidate workflows', () => {
 
   test('public search, filters, pagination, company listing, and job detail', async ({ page }) => {
     await page.goto('/?jobs=1');
+    await expectAssistantPrompt(page, 'What should I do first?');
     await page.getByPlaceholder('Search jobs, companies, or locations').fill(`E2E Climate Role ${stamp}`);
     await expect(page.getByText(job.title)).toBeVisible();
     await page.getByLabel('Filter by sector').selectOption('Climate');
@@ -268,7 +305,7 @@ test.describe.serial('Crossover Talent E2E release candidate workflows', () => {
     await expect(page.locator('#public-market').getByText(`E2E Climate Employer ${stamp}`)).toBeVisible();
   });
 
-  test('candidate signup, CV upload, save job, apply, withdraw, and track status', async ({ request }) => {
+  test('candidate signup, CV upload, save job, apply, withdraw, and track status', async ({ request, page }) => {
     const candidate = await registerVerifyLogin(request, '/api/candidate', {
       action: 'register',
       name: `E2E Candidate ${stamp}`,
@@ -277,6 +314,10 @@ test.describe.serial('Crossover Talent E2E release candidate workflows', () => {
       linkedin: `https://www.linkedin.com/in/e2ecandidate${stamp}`
     });
     candidateCookie = candidate.cookie;
+    await loginInBrowser(page, '/api/candidate', { action: 'login', email: candidateEmail, password });
+    await page.goto('/?candidate=dashboard');
+    await expect(page.locator('#candidate-app')).toBeVisible();
+    await expectAssistantPrompt(page, 'How do I upload my CV?');
 
     const parsed = await parseTxtUpload(request, 'Climate finance CV with partnerships and analytics experience.', 'cv');
     expect(parsed.text).toContain('Climate finance CV');
@@ -360,7 +401,7 @@ test.describe.serial('Crossover Talent E2E release candidate workflows', () => {
     expect(salary.response.status()).toBe(201);
   });
 
-  test('admin login, review moderation, job moderation, and user management', async ({ request }) => {
+  test('admin login, review moderation, job moderation, and user management', async ({ request, page }) => {
     if (!adminCookie) {
       const admin = await registerVerifyLogin(request, '/api/admin', {
         action: 'register',
@@ -370,6 +411,10 @@ test.describe.serial('Crossover Talent E2E release candidate workflows', () => {
       });
       adminCookie = admin.cookie;
     }
+    await loginInBrowser(page, '/api/admin', { action: 'login', email: adminEmail, password });
+    await page.goto('/?admin=1');
+    await expect(page.locator('#admin-screen')).toBeVisible();
+    await expectAssistantPrompt(page, 'Where do I approve employers?');
 
     const hideReview = await api(request, '/api/admin', { method: 'PATCH', cookie: adminCookie, body: { action: 'review-moderation', id: reviewId, hidden: true } });
     expect(hideReview.response.ok()).toBeTruthy();

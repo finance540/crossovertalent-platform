@@ -661,11 +661,13 @@ export async function requireApprovedEmployerSession(request, response) {
 }
 
 export function setSessionCookie(response, token) {
-  response.setHeader('Set-Cookie', `rb_session=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=604800`);
+  const secure = process.env.VERCEL_ENV === 'production';
+  response.setHeader('Set-Cookie', `rb_session=${token}; Path=/; HttpOnly${secure ? '; Secure' : ''}; SameSite=Lax; Max-Age=604800`);
 }
 
 export function clearSessionCookie(response) {
-  response.setHeader('Set-Cookie', 'rb_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0');
+  const secure = process.env.VERCEL_ENV === 'production';
+  response.setHeader('Set-Cookie', `rb_session=; Path=/; HttpOnly${secure ? '; Secure' : ''}; SameSite=Lax; Max-Age=0`);
 }
 
 export function methodNotAllowed(response) {
