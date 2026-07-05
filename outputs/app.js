@@ -1370,6 +1370,7 @@ $('#candidate-auth-switch').addEventListener('click', () => setCandidateAuthMode
 $('#pricing-candidate')?.addEventListener('click', () => openCandidateAuth('register'));
 $('#pricing-employer')?.addEventListener('click', () => openAuth('register'));
 $('#pricing-support')?.addEventListener('click', () => $('#support-dialog').showModal());
+$('#pricing-partnership')?.addEventListener('click', () => $('#support-dialog').showModal());
 $('#candidate-browse-jobs').addEventListener('click', openJobs);
 $('#employer-login-button').addEventListener('click', () => openAuth('login'));
 $('#add-review-button').addEventListener('click', () => {
@@ -1387,6 +1388,16 @@ $('#add-salary-button').addEventListener('click', () => {
     return;
   }
   $('#salary-dialog').showModal();
+});
+$('#join-job-alerts')?.addEventListener('click', () => {
+  const form = $('#support-form');
+  if (form) {
+    form.elements.type.value = 'feature';
+    form.elements.priority.value = 'normal';
+    form.elements.subject.value = 'Join job alerts waitlist';
+    form.elements.message.value = 'I would like to receive curated job alerts for relevant impact roles.';
+  }
+  $('#support-dialog').showModal();
 });
 $('#refresh-market-button').addEventListener('click', () => loadPublicJobs());
 $('#new-job-button').addEventListener('click', () => openJobDialog());

@@ -1,5 +1,13 @@
 {
   "outputDirectory": "outputs",
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "www.crossovertalent.asia" }],
+      "destination": "https://crossovertalent.asia/:path*",
+      "permanent": true
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
