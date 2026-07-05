@@ -8,6 +8,14 @@
       "permanent": true
     }
   ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "has": [{ "type": "host", "value": "www.crossovertalent.asia" }],
+      "status": 308,
+      "headers": { "Location": "https://crossovertalent.asia/$1" }
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
