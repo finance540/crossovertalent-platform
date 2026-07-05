@@ -91,6 +91,10 @@ dialog:has(.ai-box){width:min(820px,calc(100% - 30px))}
 .auth-methods>div{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .auth-methods label{margin:0}
 .auth-methods .button{width:100%}
+.provider-button{gap:10px}
+.provider-logo{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:6px;font-size:13px;font-weight:900;line-height:1}
+.google-logo{color:#fff;background:conic-gradient(from 0deg,#4285f4 0 25%,#34a853 0 50%,#fbbc05 0 75%,#ea4335 0)}
+.linkedin-logo{color:#fff;background:#0a66c2;font-family:Arial,Helvetica,sans-serif}
 .status.pending_review{color:#806018;background:#fff4d6}
 .status.suspended{color:#7f1d1d;background:#fee2e2}
 .status.approved{color:#1f5f3b;background:#eef7f1}
