@@ -1,13 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { IMPACT_SECTORS, assertSameOrigin, deleteRecord, ensureStorage, forbidden, listRecords, methodNotAllowed, productEvent, rateLimit, readRecord, requireApprovedEmployerSession, serverError, setSecurityHeaders, tooManyRequests, writeRecord } from './_lib.js';
 
+function isProductionSmokeJob(job = {}) {
+  return /^Prod Smoke/i.test(String(job.title || '')) || /^Prod Smoke/i.test(String(job.company || ''));
+}
+
 export default async function handler(request, response) {
   try {
     response.setHeader('Cache-Control', 'no-store');
     setSecurityHeaders(response);
     ensureStorage();
     if (request.method === 'GET' && request.query.public === '1') {
-      const jobs = (await listRecords('companies/')).filter((item) => item.recordType === 'job' && item.schemaVersion >= 2 && item.status === 'active' && (!request.query.company || item.companyId === request.query.company)).sort((a, b) => b.created_at.localeCompare(a.created_at));
+      const jobs = (await listRecords('companies/')).filter((item) => item.recordType === 'job' && item.schemaVersion >= 2 && item.status === 'active' && !isProductionSmokeJob(item) && (!request.query.company || item.companyId === request.query.company)).sort((a, b) => b.created_at.localeCompare(a.created_at));
       return response.json({ jobs });
     }
     const session = await requireApprovedEmployerSession(request, response);
