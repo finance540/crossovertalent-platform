@@ -301,22 +301,46 @@ function lines(value = '') {
   return String(value).split(/\n|,/).map(clean).filter(Boolean).slice(0, 8);
 }
 
+function roleContext(input = {}) {
+  const title = clean(input.title || 'Impact role');
+  const department = clean(input.department || '');
+  const sector = clean(input.sector || 'Impact');
+  const level = clean(input.level || input.experienceLevel || input.experience || '');
+  const location = clean(input.location || '');
+  const impactArea = clean(input.impactArea || '');
+  const context = truncate(input.context || input.sourceText || '', 1200);
+  return { title, department, sector, level, location, impactArea, context };
+}
+
+function defaultJobMetrics(input = {}) {
+  const { title, sector, level, impactArea } = roleContext(input);
+  const scope = impactArea || `${sector.toLowerCase()} outcomes`;
+  const seniorPrefix = /director|executive|head|lead|senior/i.test(`${title} ${level}`) ? 'strategic ' : '';
+  return {
+    kpis: [
+      `Deliver measurable ${scope} milestones on agreed timelines and quality standards`,
+      `Improve stakeholder, partner, or candidate satisfaction through clear communication and follow-through`,
+      `Maintain accurate reporting cadence with actionable insights for leadership decision-making`
+    ],
+    kras: [
+      `Own the ${seniorPrefix}delivery plan for the ${title} role across priority workstreams`,
+      `Coordinate cross-functional teams, partners, and leadership stakeholders to unblock execution`,
+      `Track risks, outcomes, and performance data, then translate findings into practical improvements`
+    ]
+  };
+}
+
 function jobDescription(input = {}) {
-  const title = clean(input.title);
-  const sector = clean(input.sector || 'impact');
+  const { title, department, sector, level, location, impactArea, context } = roleContext(input);
   const skillsList = lines(input.skills);
-  const skills = skillsList.join(', ');
-  const experience = clean(input.experience);
-  const kpis = lines(input.kpis);
-  const kras = lines(input.kras);
-  const context = truncate(input.context || '', 1200);
+  const skills = skillsList.join(', ') || `${sector} domain knowledge, stakeholder management, analytical problem solving, and structured execution`;
+  const experience = clean(input.experience || input.experienceSummary || level || `Relevant experience in ${sector.toLowerCase()} or mission-driven delivery`);
+  const suggested = defaultJobMetrics(input);
+  const kpis = [...lines(input.kpis), ...suggested.kpis].slice(0, 3);
+  const kras = [...lines(input.kras), ...suggested.kras].slice(0, 3);
   if (!title) throw new Error('Add the job title before generating a job description');
-  if (!skillsList.length) throw new Error('Add required skills before generating a job description');
-  if (!experience) throw new Error('Add the experience summary before generating a job description');
-  if (kpis.length < 3) throw new Error('Add the top 3 KPIs before generating a job description');
-  if (kras.length < 3) throw new Error('Add the top 3 KRAs before generating a job description');
   return `About the role
-We are hiring a ${title} to help advance ${sector.toLowerCase()} outcomes across high-impact work. This person will translate strategy into execution, work across teams and partners, and keep delivery focused on measurable public-good results.
+We are hiring a ${title}${department ? ` for ${department}` : ''} to help advance ${sector.toLowerCase()} outcomes across high-impact work${location ? ` in ${location}` : ''}. This person will translate strategy into execution, work across teams and partners, and keep delivery focused on measurable public-good results.${impactArea ? ` The role is especially focused on ${impactArea}.` : ''}
 
 What you will do
 ${kras.slice(0, 3).map((item) => `- ${item}`).join('\n')}
@@ -335,12 +359,35 @@ ${context ? `Source notes from uploaded material\n${context}` : ''}`.trim();
 
 function jdPrompt(input = {}) {
   return `Title: ${clean(input.title)}
+Department: ${clean(input.department)}
 Sector: ${clean(input.sector)}
+Location: ${clean(input.location)}
+Level: ${clean(input.level || input.experienceLevel || input.experience)}
+Impact area: ${clean(input.impactArea)}
 Skills: ${clean(input.skills)}
 Experience: ${clean(input.experience)}
 KPIs: ${clean(input.kpis)}
 KRAs: ${clean(input.kras)}
 Source notes: ${truncate(input.context || '', 1200)}`;
+}
+
+function metricsPrompt(input = {}) {
+  return `${jdPrompt(input)}
+
+Task: Suggest exactly three KPIs and exactly three KRAs for this role. Keep them measurable, realistic, sector-relevant, and suitable for a job description. Return JSON only with keys "kpis" and "kras", each an array of three strings.`;
+}
+
+function parseMetricsResponse(text = '', input = {}) {
+  const fallback = defaultJobMetrics(input);
+  try {
+    const cleaned = String(text).replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
+    const parsed = JSON.parse(cleaned);
+    const kpis = Array.isArray(parsed.kpis) ? parsed.kpis.map(clean).filter(Boolean).slice(0, 3) : [];
+    const kras = Array.isArray(parsed.kras) ? parsed.kras.map(clean).filter(Boolean).slice(0, 3) : [];
+    return { kpis: kpis.length === 3 ? kpis : fallback.kpis, kras: kras.length === 3 ? kras : fallback.kras };
+  } catch {
+    return fallback;
+  }
 }
 
 function revisedCv(input = {}) {
@@ -551,6 +598,7 @@ export default async function handler(request, response) {
       const session = requireSession(request, response);
       if (!session) return;
       const fallback = jobDescription(input);
+      const suggestedMetrics = defaultJobMetrics(input);
       const generated = await openAiChat({
         system: 'You are a senior impact-sector recruiter. Write concise, realistic job descriptions with inclusive language, clear KPIs, KRAs, skills, and no invented compensation.',
         user: jdPrompt(input),
@@ -558,7 +606,22 @@ export default async function handler(request, response) {
       });
       await auditLog('ai.jd_generated', { actorEmail: session.email, entityType: 'ai_request', metadata: { fallback: generated.fallback, reason: generated.reason || '', model: generated.model || '' } });
       await productEvent('ai_jd_generated', { actorEmail: session.email, entityType: 'ai_request', metadata: { fallback: generated.fallback, model: generated.model || '' } });
-      return response.json({ description: generated.text, generatedBy: generated.fallback ? 'Crossover Talent fallback draft assistant' : 'OpenAI', fallback: generated.fallback, fallbackReason: generated.reason });
+      return response.json({ description: generated.text, kpis: lines(input.kpis).length >= 3 ? lines(input.kpis).slice(0, 3) : suggestedMetrics.kpis, kras: lines(input.kras).length >= 3 ? lines(input.kras).slice(0, 3) : suggestedMetrics.kras, generatedBy: generated.fallback ? 'Crossover Talent fallback draft assistant' : 'OpenAI', fallback: generated.fallback, fallbackReason: generated.reason });
+    }
+    if (action === 'suggest-job-metrics') {
+      const session = requireSession(request, response);
+      if (!session) return;
+      const fallbackMetrics = defaultJobMetrics(input);
+      const generated = await openAiChat({
+        system: 'You are a senior impact-sector recruiter. Suggest role-specific KPIs and KRAs. Return JSON only.',
+        user: metricsPrompt(input),
+        fallback: JSON.stringify(fallbackMetrics),
+        timeoutMs: 9000
+      });
+      const metrics = parseMetricsResponse(generated.text, input);
+      await auditLog('ai.job_metrics_suggested', { actorEmail: session.email, entityType: 'ai_request', metadata: { fallback: generated.fallback, reason: generated.reason || '', model: generated.model || '' } });
+      await productEvent('ai_job_metrics_suggested', { actorEmail: session.email, entityType: 'ai_request', metadata: { fallback: generated.fallback, model: generated.model || '' } });
+      return response.json({ ...metrics, generatedBy: generated.fallback ? 'Crossover Talent fallback metrics assistant' : 'OpenAI', fallback: generated.fallback, fallbackReason: generated.reason || '' });
     }
     if (action === 'revise-cv') {
       const fallback = revisedCv(input);

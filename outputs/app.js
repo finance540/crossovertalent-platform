@@ -1291,17 +1291,47 @@ $('#generate-job-description').addEventListener('click', async () => {
   const data = formObject(form);
   const aiInputs = { skills: data.skills, experience: data.experienceSummary, kpis: data.kpis, kras: data.kras };
   if (!data.title.trim()) return toast('Add the job title first', true);
-  if (!structuredLines(data.skills).length) return toast('Add required skills first', true);
-  if (!data.experienceSummary.trim()) return toast('Add the experience summary first', true);
-  if (structuredLines(data.kpis).length < 3) return toast('Add the top 3 KPIs first', true);
-  if (structuredLines(data.kras).length < 3) return toast('Add the top 3 KRAs first', true);
+  const button = $('#generate-job-description');
+  button.disabled = true;
+  button.textContent = 'Generating...';
   try {
-    const generated = await api('/api/assist', { method: 'POST', body: JSON.stringify({ action: 'generate-job-description', title: data.title, sector: data.sector, context: data.sourceText, ...aiInputs }) });
+    const generated = await api('/api/assist', { method: 'POST', body: JSON.stringify({ action: 'generate-job-description', title: data.title, department: data.department, location: data.location, level: data.experience, impactArea: data.impactArea, sector: data.sector, context: data.sourceText, ...aiInputs }) });
     form.elements.description.value = generated.description;
-    form.elements.aiInputs.value = JSON.stringify(aiInputs);
-    toast('Job description generated');
-  } catch (error) { toast(error.message, true); }
+    if (structuredLines(data.kpis).length < 3 && generated.kpis?.length) form.elements.kpis.value = generated.kpis.join('\n');
+    if (structuredLines(data.kras).length < 3 && generated.kras?.length) form.elements.kras.value = generated.kras.join('\n');
+    form.elements.aiInputs.value = JSON.stringify({ ...aiInputs, kpis: form.elements.kpis.value, kras: form.elements.kras.value });
+    toast(generated.fallback ? 'Job spec generated with fallback assistant' : 'Job spec generated with AI');
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Generate job spec';
+  }
 });
+
+async function suggestJobMetrics(kind = 'both') {
+  const form = $('#job-form');
+  const data = formObject(form);
+  if (!data.title.trim()) return toast('Add the job title first', true);
+  const button = kind === 'kpis' ? $('#suggest-job-kpis') : $('#suggest-job-kras');
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Suggesting...';
+  try {
+    const metrics = await api('/api/assist', { method: 'POST', body: JSON.stringify({ action: 'suggest-job-metrics', title: data.title, department: data.department, location: data.location, level: data.experience, impactArea: data.impactArea, sector: data.sector, skills: data.skills, experience: data.experienceSummary, context: data.sourceText }) });
+    if (kind === 'kpis') form.elements.kpis.value = metrics.kpis.join('\n');
+    if (kind === 'kras') form.elements.kras.value = metrics.kras.join('\n');
+    toast(kind === 'kpis' ? 'Top 3 KPIs suggested' : 'Top 3 KRAs suggested');
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
+$('#suggest-job-kpis').addEventListener('click', () => suggestJobMetrics('kpis'));
+$('#suggest-job-kras').addEventListener('click', () => suggestJobMetrics('kras'));
 
 $('#cv-attachment').addEventListener('change', async (event) => {
   const file = event.target.files[0];

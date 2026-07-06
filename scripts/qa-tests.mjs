@@ -156,6 +156,11 @@ includes('seed', /for \(let i = 0; i < 50; i \+= 1\)/, 'staging seed creates 50 
 includes('html', /id="job-attachment"/, 'JD upload control exists');
 includes('html', /id="cv-attachment"/, 'CV upload control exists');
 includes('app', /generate-job-description/, 'AI JD assistant is wired');
+includes('assist', /action === 'suggest-job-metrics'/, 'AI KPI and KRA suggestion route exists');
+includes('assist', /defaultJobMetrics/, 'fallback KPI and KRA suggestions exist');
+includes('html', /id="suggest-job-kpis"/, 'suggest KPI button exists');
+includes('html', /id="suggest-job-kras"/, 'suggest KRA button exists');
+includes('app', /suggestJobMetrics/, 'KPI and KRA suggestion buttons are wired');
 includes('app', /generateCandidateResume/, 'AI CV assistant is wired');
 
 includes('html', /id="level-filter"/, 'level filter exists');
