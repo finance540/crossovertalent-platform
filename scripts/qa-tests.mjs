@@ -155,6 +155,10 @@ includes('seed', /for \(let i = 0; i < 50; i \+= 1\)/, 'staging seed creates 50 
 
 includes('html', /id="job-attachment"/, 'JD upload control exists');
 includes('html', /id="cv-attachment"/, 'CV upload control exists');
+includes('assist', /MAX_UPLOAD_BYTES = 3_000_000/, 'server accepts real-world uploads up to 3 MB');
+includes('app', /MAX_UPLOAD_BYTES = 3_000_000/, 'client validates the same 3 MB upload limit');
+includes('assist', /Legacy \.doc files cannot be parsed reliably/, 'legacy DOC files fail with clear guidance');
+includes('html', /PDF\/DOCX\/TXT/, 'upload UI advertises supported document formats only');
 includes('app', /generate-job-description/, 'AI JD assistant is wired');
 includes('assist', /action === 'suggest-job-metrics'/, 'AI KPI and KRA suggestion route exists');
 includes('assist', /defaultJobMetrics/, 'fallback KPI and KRA suggestions exist');

@@ -2,7 +2,7 @@ import { allowStorageFallback, auditLog, assertSameOrigin, employerStatus, emplo
 import mammoth from 'mammoth';
 import { randomUUID } from 'node:crypto';
 
-const MAX_UPLOAD_BYTES = 1_500_000;
+const MAX_UPLOAD_BYTES = 3_000_000;
 const PDF_TEXT_MINIMUM = 0.7;
 const OCR_TEXT_MINIMUM = 0.64;
 const OCR_MAX_PAGES = 3;
@@ -60,7 +60,7 @@ function parsingConfidence(value = '') {
 function decodeUpload(file = {}) {
   const raw = String(file.data || '').replace(/^data:[^;]+;base64,/, '');
   const buffer = Buffer.from(raw, 'base64');
-  if (!buffer.length || buffer.length > MAX_UPLOAD_BYTES) throw new Error('Upload a PDF, DOC, DOCX, or TXT file under 1.5 MB');
+  if (!buffer.length || buffer.length > MAX_UPLOAD_BYTES) throw new Error('Upload a PDF, DOCX, or TXT file under 3 MB');
   return buffer;
 }
 
@@ -86,10 +86,11 @@ function assertFileSignature(file = {}, buffer) {
   const isPdf = ascii.startsWith('%PDF');
   const isZipDocx = header.startsWith('504b0304');
   const isText = mime.includes('text') || name.endsWith('.txt');
-  const isDoc = mime.includes('msword') || name.endsWith('.doc');
+  const isLegacyDoc = mime.includes('msword') || (name.endsWith('.doc') && !name.endsWith('.docx'));
+  if (isLegacyDoc) throw new Error('Legacy .doc files cannot be parsed reliably. Export the document as DOCX, PDF, or TXT and upload again.');
   if ((mime.includes('pdf') || name.endsWith('.pdf')) && !isPdf) throw new Error('The uploaded PDF does not look like a valid PDF file');
   if ((mime.includes('openxmlformats') || name.endsWith('.docx')) && !isZipDocx) throw new Error('The uploaded DOCX does not look like a valid DOCX file');
-  if (!(isPdf || isZipDocx || isText || isDoc)) throw new Error('Upload a PDF, DOC, DOCX, or TXT file');
+  if (!(isPdf || isZipDocx || isText)) throw new Error('Upload a PDF, DOCX, or TXT file');
 }
 
 async function extractDocxText(buffer) {
