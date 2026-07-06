@@ -9,6 +9,22 @@ const OCR_MAX_PAGES = 3;
 const OCR_RENDER_SCALE = 1.35;
 const OCR_TIMEOUT_MS = 7500;
 
+function configuredOpenAiOcrKey() {
+  return process.env.OPENAI_OCR_API_KEY || process.env.OPENAI_API_KEY || '';
+}
+
+function openAiOcrModels() {
+  const configured = [
+    process.env.OPENAI_OCR_MODEL,
+    process.env.OPENAI_VISION_MODEL,
+    process.env.OPENAI_MODEL
+  ]
+    .flatMap((value) => String(value || '').split(','))
+    .map(clean)
+    .filter(Boolean);
+  return [...new Set([...configured, 'gpt-4o-mini', 'gpt-4.1-mini'])];
+}
+
 function clean(value = '') {
   return String(value).replace(/\s+/g, ' ').trim();
 }
@@ -199,55 +215,63 @@ async function renderPdfPagesToImages(buffer) {
 }
 
 async function openAiOcrImages(images = [], file = {}) {
-  if (!process.env.OPENAI_API_KEY) {
-    return { text: '', fallback: true, reason: 'OPENAI_API_KEY missing' };
+  const apiKey = configuredOpenAiOcrKey();
+  if (!apiKey) {
+    return { text: '', fallback: true, reason: 'OPENAI OCR key missing' };
   }
   if (!images.length) {
     return { text: '', fallback: true, reason: 'No PDF pages rendered for OCR' };
   }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), OCR_TIMEOUT_MS);
-  try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || 'gpt-4.1-mini',
-        temperature: 0,
-        max_tokens: 3000,
-        messages: [
-          {
-            role: 'system',
-            content: 'You extract readable job-description or resume text from document page images. Return only the text visible in the document. Preserve headings and bullets. Do not invent missing words, employers, salaries, dates, or facts.'
-          },
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: `Extract the readable text from this uploaded ${uploadKind(file)} PDF. If a section is unreadable, omit it instead of guessing.` },
-              ...images.map((image) => ({ type: 'image_url', image_url: { url: image.dataUrl, detail: 'high' } }))
-            ]
-          }
-        ]
-      })
-    });
-    if (!response.ok) {
-      await response.text().catch(() => '');
-      const reason = response.status === 401
-        ? 'OpenAI OCR key is invalid or not authorized'
-        : `OpenAI OCR provider failed with HTTP ${response.status}`;
-      return { text: '', fallback: true, reason };
+  let lastReason = 'OpenAI OCR provider unavailable';
+  for (const model of openAiOcrModels()) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), OCR_TIMEOUT_MS);
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0,
+          max_tokens: 3000,
+          messages: [
+            {
+              role: 'system',
+              content: 'You extract readable job-description or resume text from document page images. Return only the text visible in the document. Preserve headings and bullets. Do not invent missing words, employers, salaries, dates, or facts.'
+            },
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: `Extract the readable text from this uploaded ${uploadKind(file)} PDF. If a section is unreadable, omit it instead of guessing.` },
+                ...images.map((image) => ({ type: 'image_url', image_url: { url: image.dataUrl, detail: 'high' } }))
+              ]
+            }
+          ]
+        })
+      });
+      if (!response.ok) {
+        await response.text().catch(() => '');
+        lastReason = response.status === 401
+          ? 'OpenAI OCR key is invalid'
+          : response.status === 403
+            ? `OpenAI OCR model is not authorized for ${model}`
+          : `OpenAI OCR provider failed with HTTP ${response.status} for ${model}`;
+        if (response.status === 401) return { text: '', fallback: true, reason: lastReason };
+        continue;
+      }
+      const data = await response.json();
+      return { text: data.choices?.[0]?.message?.content || '', fallback: false, model: data.model || model };
+    } catch (error) {
+      lastReason = error.name === 'AbortError' ? `OpenAI OCR timed out for ${model}` : 'OpenAI OCR provider unavailable';
+    } finally {
+      clearTimeout(timeout);
     }
-    const data = await response.json();
-    return { text: data.choices?.[0]?.message?.content || '', fallback: false, model: data.model || '' };
-  } catch (error) {
-    return { text: '', fallback: true, reason: error.name === 'AbortError' ? 'OpenAI OCR timed out' : error.message };
-  } finally {
-    clearTimeout(timeout);
   }
+  return { text: '', fallback: true, reason: lastReason };
 }
 
 async function extractPdfWithOcr(buffer, file = {}) {

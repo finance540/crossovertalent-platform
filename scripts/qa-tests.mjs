@@ -79,6 +79,8 @@ includes('assist', /readable text could not be extracted/, 'unreadable PDFs retu
 includes('assist', /extractPdfJsText/, 'pdf.js text extraction fallback exists');
 includes('assist', /renderPdfPagesToImages/, 'PDF pages can be rendered for OCR fallback');
 includes('assist', /openAiOcrImages/, 'OpenAI vision OCR fallback exists for scanned PDFs');
+includes('assist', /OPENAI_OCR_API_KEY/, 'OCR can use a dedicated OpenAI OCR key');
+includes('assist', /gpt-4o-mini/, 'OCR uses a broadly available vision-capable fallback model');
 includes('assist', /extractionMethod/, 'document parser returns extraction method');
 includes('app', /OCR parsed/, 'upload UI reports OCR parsing when used');
 includes('app', /history\.replaceState\(\{\}, '', '\/\?dashboard=1'\)/, 'employer redirects to dashboard');

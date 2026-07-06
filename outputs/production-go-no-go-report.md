@@ -1,165 +1,90 @@
 # Production Go/No-Go Report
 
-Date: 2026-07-05
+Date: 2026-07-06 JST
 
-## Decision
+## Current Decision
 
-**GO - AI Navigation Assistant fully validated in production protected dashboards.**
+**GO - Production remains live for controlled beta.**
 
-Production remained on `https://crossovertalent.asia`. No DNS change, code change, redeploy, or production data mutation was performed for this final handoff update.
+**NO-GO - Scale-up / broad real-world rollout until the open P1 OCR blocker is fixed and protected dashboard QA is completed with real approved credentials.**
 
-## Auth Provider Activation Addendum
+The latest live QA pass against `https://crossovertalent.asia` confirms the core public platform, auth gates, production Supabase readiness, uploads for text-based files, OAuth start flows, public application submission, and admin route protection are functioning. One P1 issue remains open: scanned/image PDF parsing cannot complete OCR because the production OpenAI key is invalid or not authorized for the configured vision-capable model.
 
-Date: 2026-07-05
+## Latest QA Evidence
 
-**NO-GO - Google, LinkedIn, and Phone OTP activation is not complete.**
-
-The prepared multi-login UI/API remains safely disabled in production because Supabase provider configuration has not been verified and the Vercel Production activation flags are missing:
-
-- `AUTH_GOOGLE_ENABLED`
-- `AUTH_LINKEDIN_ENABLED`
-- `AUTH_PHONE_OTP_ENABLED`
-
-This addendum does not change the existing AI Navigation Assistant GO decision. It creates a separate release gate for external auth providers.
-
-| Auth provider | Status | Evidence |
-|---|---:|---|
-| Google | NO-GO | `/api/auth-provider?provider=google&role=candidate` returns HTTP 503 with safe disabled-state message. |
-| LinkedIn | NO-GO | `/api/auth-provider?provider=linkedin&role=candidate` returns HTTP 503 with safe disabled-state message. |
-| Phone OTP | NO-GO | `start-phone-otp` returns HTTP 503 with safe disabled-state message. |
-| Email/password regression | PASS | Existing employer, candidate, and admin smoke logins returned HTTP 200. |
-
-Required next action: confirm Google, LinkedIn, and Phone/SMS providers are enabled in Supabase project `hntvcqahoseizmgswohq`, then add the three Vercel Production flags and redeploy.
-
-## Product Improvement Sprint Addendum
-
-Date: 2026-07-05
-
-**GO - product improvement sprint is ready for controlled production deployment.**
-
-The sprint improved customer, candidate, and employer experience without changing production infrastructure, weakening auth, or mutating production data.
-
-| Area | Result |
+| Item | Result |
 |---|---:|
-| Clear CTAs: Find Jobs, Hire Talent, Book a Consultation, Submit CV | PASS |
-| Candidate recruitment process and onboarding guidance | PASS |
-| Employer service model and engagement options | PASS |
-| Trust placeholders for logos, testimonials, case studies, metrics | PASS |
-| Marketplace filters: location, function, seniority, work type, industry | PASS |
-| Page-specific AI assistant prompts | PASS |
-| SEO/content sections for Japan, India, Asia, SaaS/AI/Fintech, employer and candidate guides | PASS |
-| Mobile jobs page overflow | PASS |
-| Local lint/typecheck/build/test | PASS |
-| Playwright E2E | PASS - 6/6 |
-| Production health/readiness/admin/jobs endpoint smoke | PASS |
-| Secret/staging marker scan in changed public files | PASS |
-
-Evidence:
-
-- `outputs/customer-user-employer-review.md`
-- `outputs/product-improvement-sprint-report.md`
-- `outputs/post-improvement-validation.md`
-- `outputs/product-sprint-homepage.png`
-- `outputs/product-sprint-jobs-page.png`
-- `outputs/product-sprint-mobile-jobs.png`
-
-Known limitations:
-
-- These improvements are local and not yet deployed.
-- Job alerts remain placeholder-only.
-- Trust proof placeholders require real approved proof before publishing actual claims.
-- Auth provider activation remains a separate NO-GO gate until Supabase provider setup and Vercel flags are completed.
-
-Recommendation: deploy the product improvement sprint through the normal Git/Vercel production process. Existing production remains GO.
-
-## Deployment Evidence
-
-| Item | Evidence |
-|---|---|
-| Final deployment ID | `dpl_5FZncb9WiWJnbGMLniLf6rW9X5c6` |
-| Deployment URL | `https://build-me-a-simple-website-where-r65ahb5gq-cot-s-projects1.vercel.app` |
-| Production alias | `https://crossovertalent.asia` |
-| Final deployed commit | `5a4e3d8` |
-| Assistant implementation commit | `6081598` |
-| Fallback sanitizer commit | `5a4e3d8` |
-| Validation evidence commit | `b335583` |
+| Production URL | `https://crossovertalent.asia/` |
 | Production Supabase ref | `hntvcqahoseizmgswohq` |
+| Live QA report | `outputs/production-live-qa-report.md` |
+| Production health score | `97%` |
+| Executed checks | `32` |
+| Open P0 issues | `0` |
+| Open P1 issues | `1` |
+| Latest screenshots | `outputs/qa-screenshots/` |
 
-## Current Gate Status
+## Gate Summary
 
-| Area | Status |
+| Gate | PASS / FAIL | Evidence |
+|---|---:|---|
+| Homepage and CTAs | PASS | Find Jobs, Hire Talent, Book a Consultation, Submit CV visible |
+| Employer login page | PASS | `https://crossovertalent.asia/?login=1` |
+| Candidate login page | PASS | `https://crossovertalent.asia/?candidate=login` |
+| Mobile homepage | PASS | 390x844 viewport screenshot captured |
+| `/api/health` | PASS | HTTP `200` |
+| `/api/ready` | PASS | HTTP `200`, production ref confirmed |
+| Public jobs API | PASS | HTTP `200`, active jobs returned |
+| Public reviews API | PASS | HTTP `200` |
+| Public salary signals API | PASS | HTTP `200` |
+| Admin route protection | PASS | Unauthenticated `/api/admin` HTTP `401` |
+| Employer jobs route protection | PASS | Unauthenticated `/api/jobs` HTTP `401` |
+| Google OAuth start | PASS | Redirects to production Supabase OAuth authorize URL |
+| LinkedIn OAuth start | PASS | Redirects to production Supabase OAuth authorize URL |
+| Phone OTP prepared-disabled state | PASS | Clear HTTP `503` configuration message |
+| Candidate registration gate | PASS | New candidate requires email verification |
+| Employer registration gate | PASS | New employer defaults to review/verification gate |
+| Text JD parsing | PASS | TXT, DOCX, and text-based PDF parse successfully |
+| Scanned PDF OCR parsing | FAIL | P1: OpenAI OCR key invalid or unauthorized |
+| LinkedIn profile attach helper | PASS | Profile URL attaches with clear scraping limitation note |
+| JD generator auth protection | PASS | Unauthenticated request blocked |
+| Public application submission | PASS | Public application endpoint accepted smoke application |
+| Review/salary write protection | PASS | Unauthenticated writes blocked |
+| Feedback/support endpoint | PASS | HTTP `201` |
+
+## Open Bugs
+
+| Bug ID | Severity | Status | Recommendation |
+|---|---:|---|---|
+| `LIVE-P1-OCR-001` | P1 | Partially fixed in code, production validation pending | Code now supports `OPENAI_OCR_API_KEY` plus multiple vision model fallbacks and declares the PDF renderer dependency directly. Configure a valid production OpenAI OCR key/model, deploy, then rerun scanned PDF upload QA. |
+
+## Fix Iteration - 2026-07-06 JST
+
+| Change | Result |
 |---|---:|
-| Vercel production deployment | PASS |
-| Supabase project ref `hntvcqahoseizmgswohq` | PASS |
-| `/api/health` | PASS |
-| `/api/ready` | PASS |
-| `/api/assist` | PASS |
-| Homepage assistant rendering | PASS |
-| Employer login assistant rendering | PASS |
-| Employer protected dashboard assistant | PASS |
-| Candidate protected dashboard assistant | PASS |
-| Admin protected dashboard assistant | PASS |
-| AI fallback | PASS |
-| Secret exposure scan | PASS |
-| Console/network dashboard checks | PASS |
+| Dedicated OCR key support: `OPENAI_OCR_API_KEY` | Done |
+| OCR model fallback: `OPENAI_OCR_MODEL`, `OPENAI_VISION_MODEL`, `OPENAI_MODEL`, `gpt-4o-mini`, `gpt-4.1-mini` | Done |
+| Direct OCR renderer dependency: `@napi-rs/canvas` | Done |
+| Env documentation updated | Done |
+| Structural parser tests updated | Done |
+| Local lint/typecheck/build/test | PASS |
+| Local Playwright E2E | PASS - 6/6 |
 
-## Validation Results
+The remaining risk is external provider configuration: if Vercel Production still has an invalid OpenAI key, OCR cannot succeed because scanned PDFs contain images, not extractable text.
 
-| Workflow / Check | Result | Notes |
+## Blocked Manual QA
+
+| Workflow | Status | Needed Evidence |
 |---|---:|---|
-| Health endpoint | PASS | HTTP 200, status `healthy`. |
-| Readiness endpoint | PASS | HTTP 200, production Supabase ref confirmed. |
-| Assistant API | PASS | HTTP 200 with role-aware safe guidance. |
-| AI fallback | PASS | Safe fallback works with `AI provider unavailable`. |
-| Homepage assistant widget | PASS | Widget and panel present in production HTML. |
-| Employer login page assistant widget | PASS | Widget and panel present on `/?login=1`. |
-| Live protected employer dashboard | PASS | Existing approved employer smoke account logged in; employer prompts and submit flow responded. |
-| Live protected candidate dashboard | PASS | Existing verified candidate smoke account logged in; candidate prompts and submit flow responded. |
-| Live protected admin dashboard | PASS | Existing admin smoke account logged in; admin prompts and submit flow responded. |
-| No service role key exposed client-side | PASS | No service-role/env markers found in public HTML/JS. |
-| No staging Supabase reference | PASS | No staging project ref found in public HTML/JS. |
-| Public jobs API | PASS | HTTP 200; returned production job records. |
-| Admin route protection | PASS | Unauthenticated `/api/admin` returned HTTP 401. |
-
-## Evidence
-
-Screenshots:
-
-- `outputs/assistant-production-employer.png`
-- `outputs/assistant-production-candidate.png`
-- `outputs/assistant-production-admin.png`
-
-Supporting reports:
-
-- `outputs/post-assistant-production-validation.md`
-- `outputs/ai-navigation-assistant-release-handoff.md`
-- `outputs/ai-navigation-assistant-report.md`
-- `outputs/assistant-security-guardrails.md`
-- `outputs/assistant-ux-flow.md`
-
-## Known Limitation
-
-OpenAI live generation is unavailable or invalid in production. The assistant remains production-safe because deterministic fallback guidance is working and provider internals are not exposed.
-
-## Remaining Risks
-
-| Risk | Severity | Mitigation |
-|---|---:|---|
-| OpenAI provider key/model unavailable | P2 | Fix provider key/model when live generative responses are required; fallback remains active. |
-| Assistant response quality needs production tuning | P3 | Review user feedback and assistant usage analytics. |
-| Higher assistant usage may require rate-limit review | P3 | Monitor `/api/assist` volume and fallback rate. |
-
-## Rollback Criteria
-
-Rollback only for P0 or security-critical issues:
-
-- Secret, token, password, service role key, or private user data exposure.
-- Assistant bypasses employer approval, admin permission, or protected route rules.
-- Assistant executes unauthorized admin decisions or mutates data.
-- Assistant causes production health/readiness or authentication failures.
-
-No rollback is recommended for the current release.
+| Approved employer dashboard | BLOCKED | Approved employer QA credentials or admin approval of QA employer |
+| Verified candidate dashboard | BLOCKED | Verified candidate QA credentials or completed email verification |
+| Admin moderation dashboard | BLOCKED | Existing admin QA credentials |
+| Full Google/LinkedIn callback | BLOCKED | Interactive third-party OAuth login credentials |
 
 ## Final Recommendation
 
-**GO - keep AI Navigation Assistant live in production.**
+Production can remain live for controlled beta, but do not scale onboarding until:
+
+1. The OpenAI OCR key/provider issue is fixed in Vercel Production, the new code is deployed, and scanned PDF parsing passes.
+2. Verified candidate, approved employer, and admin QA credentials are supplied and protected dashboard workflows are re-tested.
+
+DNS changes are not required for this QA finding. No rollback is recommended because the open issue affects scanned PDF OCR only; text-based PDF, DOCX, and TXT parsing pass.
