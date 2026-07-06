@@ -6,7 +6,7 @@ const MAX_UPLOAD_BYTES = 3_000_000;
 const PDF_TEXT_MINIMUM = 0.7;
 const OCR_TEXT_MINIMUM = 0.64;
 const OCR_MAX_PAGES = 3;
-const OCR_RENDER_SCALE = 1.35;
+const OCR_RENDER_SCALE = 1.15;
 const OCR_TIMEOUT_MS = 7500;
 
 function configuredOpenAiOcrKey() {
@@ -254,12 +254,23 @@ async function openAiOcrImages(images = [], file = {}) {
         })
       });
       if (!response.ok) {
-        await response.text().catch(() => '');
+        const errorBody = await response.json().catch(() => ({}));
+        const providerMessage = clean(errorBody?.error?.message || '');
+        const rateLimited = response.status === 429;
         lastReason = response.status === 401
           ? 'OpenAI OCR key is invalid'
+          : rateLimited
+            ? 'OpenAI OCR quota or rate limit reached'
           : response.status === 403
             ? `OpenAI OCR model is not authorized for ${model}`
           : `OpenAI OCR provider failed with HTTP ${response.status} for ${model}`;
+        if (rateLimited) {
+          await auditLog('ai.ocr_rate_limited', {
+            entityType: 'ai_request',
+            metadata: { model, status: response.status, providerCode: clean(errorBody?.error?.code || ''), providerType: clean(errorBody?.error?.type || ''), providerMessage: truncate(providerMessage, 240) }
+          });
+          return { text: '', fallback: true, reason: lastReason };
+        }
         if (response.status === 401) return { text: '', fallback: true, reason: lastReason };
         continue;
       }
