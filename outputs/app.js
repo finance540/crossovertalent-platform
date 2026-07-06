@@ -610,17 +610,37 @@ async function withdrawApplication(id) {
     renderCandidateDashboard();
     toast('Application withdrawn');
   } catch (error) {
-    if (error.verificationRequired) showVerificationNotice('#auth-subtitle', error, data.email, 'employer');
     toast(error.message, true);
   }
 }
 
 function renderResumeTools() {
   $('#candidate-content').innerHTML = `<section class="page-heading"><div><p class="eyebrow">Resume and AI</p><h1>Create or update your resume.</h1><p class="muted">Use your current resume and target role to generate a cleaner version.</p></div></section>
-  <section class="panel candidate-form-panel"><label>Current resume<textarea id="candidate-resume" rows="9">${escapeHtml(state.candidate.resume || '')}</textarea></label><label>Target role<input id="candidate-target-role" placeholder="e.g. Climate Data Lead" /></label><label>Key skills<input id="candidate-skills" placeholder="SQL, MRV, partnerships" /></label><div class="dialog-actions"><button class="button subtle" id="save-resume-profile">Save resume</button><button class="button primary" id="generate-candidate-resume">Generate AI resume</button></div><label>AI chat<textarea id="candidate-chat-message" rows="3" placeholder="Ask about improving your resume or job search strategy"></textarea></label><div class="dialog-actions"><button class="button subtle" id="candidate-chat-button">Ask AI</button></div><div id="candidate-ai-output" class="cv-panel hidden"></div></section>`;
+  <section class="panel candidate-form-panel"><div class="ai-box"><strong>Upload CV</strong><p>Upload a PDF, DOC, DOCX, or TXT file to parse and save it to your candidate profile.</p><div class="inline-actions"><label class="upload-button">Upload CV<input id="candidate-resume-upload" type="file" accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" /></label></div><p class="muted" id="candidate-resume-upload-status">No CV parsed yet.</p></div><label>Current resume<textarea id="candidate-resume" rows="9">${escapeHtml(state.candidate.resume || '')}</textarea></label><label>Target role<input id="candidate-target-role" placeholder="e.g. Climate Data Lead" /></label><label>Key skills<input id="candidate-skills" placeholder="SQL, MRV, partnerships" /></label><div class="dialog-actions"><button class="button subtle" id="save-resume-profile">Save resume</button><button class="button primary" id="generate-candidate-resume">Generate AI resume</button></div><label>AI chat<textarea id="candidate-chat-message" rows="3" placeholder="Ask about improving your resume or job search strategy"></textarea></label><div class="dialog-actions"><button class="button subtle" id="candidate-chat-button">Ask AI</button></div><div id="candidate-ai-output" class="cv-panel hidden"></div></section>`;
+  $('#candidate-resume-upload').addEventListener('change', uploadCandidateResume);
   $('#save-resume-profile').addEventListener('click', () => saveCandidateProfile({ resume: $('#candidate-resume').value }));
   $('#generate-candidate-resume').addEventListener('click', () => generateCandidateResume());
   $('#candidate-chat-button').addEventListener('click', () => candidateChat());
+}
+
+async function uploadCandidateResume(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  $('#candidate-resume-upload-status').textContent = `Reading ${file.name}...`;
+  try {
+    const payload = await filePayload(file);
+    payload.purpose = 'cv';
+    const parsed = await api('/api/assist', { method: 'POST', body: JSON.stringify({ action: 'parse-document', file: payload }) });
+    $('#candidate-resume').value = parsed.text;
+    await saveCandidateProfile({ resume: parsed.text });
+    $('#candidate-resume-upload-status').textContent = `${parsed.file.fileName || parsed.file.name || file.name} uploaded, parsed, and saved to your profile.`;
+    toast('CV uploaded and saved');
+  } catch (error) {
+    $('#candidate-resume-upload-status').textContent = 'CV upload or parsing failed.';
+    toast(error.message, true);
+  } finally {
+    event.target.value = '';
+  }
 }
 
 function renderCandidatePreferences() {
@@ -899,7 +919,7 @@ function renderReviewsList() {
   $('#public-market').innerHTML = reviews.length ? page.items.map((review) => `
     <article class="review-card">
       <div class="review-head"><div><p class="company">${escapeHtml(review.company)} · ${escapeHtml(review.sector)}</p><h2>${escapeHtml(review.headline)}</h2></div><strong>${ratingStars(review.rating)} ${Number(review.rating).toFixed(1)}</strong></div>
-      <p>${escapeHtml(review.role)} · ${escapeHtml(review.location)} · ${moneyLabel(review.salary)}</p>
+      <p>${escapeHtml(review.role)} · ${escapeHtml(review.location)} · ${moneyLabel(review.salary)}${review.companyUrl ? ` · <a href="${escapeHtml(review.companyUrl)}" target="_blank" rel="noopener">Company URL ↗</a>` : ''}</p>
       <p>${review.reviewer?.displayMode === 'linkedin' ? `<a href="${escapeHtml(review.reviewer.linkedin)}" target="_blank" rel="noopener">${escapeHtml(review.reviewer.label)} ↗</a>` : escapeHtml(review.reviewer?.label || 'Anonymous verified reviewer')} · verified ${escapeHtml(review.reviewer?.verifiedDomain || 'email')}</p>
       <div class="review-grid"><div><small>Pros</small><p>${escapeHtml(review.pros)}</p></div><div><small>Watch-outs</small><p>${escapeHtml(review.cons)}</p></div></div>
       ${review.advice ? `<p class="advice"><strong>Advice:</strong> ${escapeHtml(review.advice)}</p>` : ''}
@@ -927,7 +947,7 @@ function openReviewDialog(review = null) {
   const form = $('#review-form');
   form.reset();
   form.elements.id.value = review?.id || '';
-  if (review) ['company', 'sector', 'role', 'location', 'rating', 'salary', 'headline', 'pros', 'cons', 'advice'].forEach((field) => { form.elements[field].value = review[field] || ''; });
+  if (review) ['company', 'companyUrl', 'sector', 'role', 'location', 'rating', 'salary', 'headline', 'pros', 'cons', 'advice'].forEach((field) => { form.elements[field].value = review[field] || ''; });
   if (review?.reviewer) {
     form.elements.displayMode.value = review.reviewer.displayMode || 'anonymous';
     form.elements.reviewerLinkedin.value = review.reviewer.linkedin || '';
@@ -1219,13 +1239,26 @@ $('#apply-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const data = formObject(event.currentTarget);
   data.cvAttachment = parseJsonField(data.cvAttachment);
+  if (state.candidate) {
+    data.name = data.name || state.candidate.name;
+    data.email = state.candidate.email;
+    data.linkedin = data.linkedin || state.candidate.linkedin || '';
+    data.cvText = data.cvText || state.candidate.resume || '';
+  }
   const button = event.currentTarget.querySelector('[type="submit"]');
   button.disabled = true;
   try {
     await api('/api/applications', { method: 'POST', body: JSON.stringify(data) });
+    if (state.candidate) {
+      const refreshed = await api('/api/candidate').catch(() => null);
+      if (refreshed?.candidate) {
+        state.candidate = refreshed.candidate;
+        state.candidateApplications = refreshed.applications || [];
+      }
+    }
     event.currentTarget.reset();
     $('#apply-dialog').close();
-    toast('Application submitted. Good luck!');
+    toast(state.candidate ? 'Application submitted. Track it from your dashboard.' : 'Application submitted. Good luck!');
   } catch (error) { toast(error.message, true); }
   finally { button.disabled = false; }
 });
@@ -1403,6 +1436,10 @@ $('#refresh-market-button').addEventListener('click', () => loadPublicJobs());
 $('#new-job-button').addEventListener('click', () => openJobDialog());
 $('#menu-button').addEventListener('click', () => $('.sidebar').classList.toggle('open'));
 $('#candidate-menu-button').addEventListener('click', () => $('#candidate-app .sidebar').classList.toggle('open'));
+$('#candidate-back-button').addEventListener('click', () => {
+  if (history.length > 1) history.back();
+  else openJobs();
+});
 $('#global-search').addEventListener('input', (event) => { state.search = event.target.value; render(); });
 $('#candidate-search').addEventListener('input', (event) => { state.candidateSearch = event.target.value; renderCandidateDashboard(); });
 $('#public-search').addEventListener('input', (event) => renderPublicJobs(event.target.value));

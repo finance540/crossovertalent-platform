@@ -125,9 +125,15 @@ includes('applications', /withdrawn/, 'candidate withdrawal status is accepted')
 includes('app', /data-withdraw-application/, 'candidate withdrawal control exists');
 includes('app', /openJobDetail/, 'public job detail flow exists');
 includes('app', /toggleSaveJob/, 'saved jobs flow exists');
+includes('html', /id="candidate-back-button"/, 'candidate dashboard back button exists');
+includes('app', /id="candidate-resume-upload"/, 'candidate dashboard CV upload exists');
+includes('app', /uploadCandidateResume/, 'candidate dashboard CV upload is wired');
+includes('applications', /candidateSession/, 'candidate application identity is bound to session');
 
 includes('reviews', /displayMode/, 'review display modes are saved');
 includes('reviews', /isCompanyEmail/, 'company email verification exists for reviews');
+includes('reviews', /session\.role !== 'candidate'/, 'verified candidates can create reviews from OAuth email accounts');
+includes('html', /name="companyUrl"/, 'review form captures company URL');
 includes('reviews', /request\.method === 'PATCH'/, 'review edit route exists');
 includes('admin', /review-moderation/, 'admin review moderation exists');
 includes('admin', /job-moderation/, 'admin job moderation exists');

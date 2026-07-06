@@ -332,7 +332,7 @@ test.describe.serial('Crossover Talent E2E release candidate workflows', () => {
       body: {
         jobId: job.id,
         name: `E2E Candidate ${stamp}`,
-        email: candidateEmail,
+        email: `alternate-${stamp}@example.com`,
         linkedin: `https://www.linkedin.com/in/e2ecandidate${stamp}`,
         coverLetter: 'I am excited to test this enterprise release candidate workflow.',
         cvText: parsed.text,
@@ -345,6 +345,7 @@ test.describe.serial('Crossover Talent E2E release candidate workflows', () => {
     expect(applications.response.ok()).toBeTruthy();
     const application = applications.data.applications.find((item) => item.job_id === job.id);
     expect(application).toBeTruthy();
+    expect(application.email).toBe(candidateEmail);
     applicationId = application.id;
 
     const withdraw = await api(request, '/api/applications', { method: 'PATCH', cookie: candidateCookie, body: { action: 'withdraw', id: applicationId } });
@@ -368,6 +369,7 @@ test.describe.serial('Crossover Talent E2E release candidate workflows', () => {
       cookie: candidateCookie,
       body: {
         company: `E2E Climate Employer ${stamp}`,
+        companyUrl: 'https://crossovertalent.asia',
         sector: 'Climate',
         role: 'Climate Manager',
         location: 'Singapore',

@@ -398,6 +398,7 @@
     <main>
       <header class="topbar">
         <button id="candidate-menu-button" class="icon-button menu-button" aria-label="Open menu">☰</button>
+        <button id="candidate-back-button" class="button subtle" type="button">← Back</button>
         <div class="search"><span>⌕</span><input id="candidate-search" placeholder="Search saved or applied jobs..." /></div>
         <a class="button subtle public-link" href="/?jobs=1">Browse job board ↗</a>
       </header>
@@ -456,6 +457,7 @@
       <div class="dialog-header"><div><p class="eyebrow">Anonymous review</p><h2>Share workplace insight</h2><p class="muted">Reviews are public and do not show your name or email.</p></div><button type="button" class="close-button" data-close="review-dialog">×</button></div>
       <div class="form-grid">
         <label>Company<input name="company" required placeholder="Organisation name" /></label>
+        <label>Company URL<input name="companyUrl" type="url" placeholder="https://company.org" /></label>
         <label>Focus sector<select name="sector"><option>Climate</option><option>Impact Investment</option><option>Public Healthcare</option><option>Agriculture</option><option>Water</option><option>Education</option><option>Clean Energy</option><option>Philanthropic Foundation</option><option>Circular Economy</option><option>CSR</option><option>ESG Consulting</option></select></label>
         <label>Role or function<input name="role" required placeholder="Investment Associate, Program Lead..." /></label>
         <label>Location<input name="location" required placeholder="Singapore, Tokyo, Remote..." /></label>

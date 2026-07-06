@@ -30,15 +30,16 @@ export default async function handler(request, response) {
       if (!assertSameOrigin(request)) return forbidden(response);
       const session = readSession(request);
       if (!session) return response.status(401).json({ error: 'Sign in with a company or job seeker email before writing a review' });
-      if (!isCompanyEmail(session.email)) return response.status(403).json({ error: 'Use a company email address to write a verified review' });
-      const { company = '', sector = '', role = '', location = '', rating = '', salary = '', headline = '', pros = '', cons = '', advice = '', displayMode = 'anonymous', reviewerLinkedin = '' } = request.body || {};
+      if (!isCompanyEmail(session.email) && session.role !== 'candidate') return response.status(403).json({ error: 'Use a company email address or a verified job seeker account to write a review' });
+      const { company = '', companyUrl = '', sector = '', role = '', location = '', rating = '', salary = '', headline = '', pros = '', cons = '', advice = '', displayMode = 'anonymous', reviewerLinkedin = '' } = request.body || {};
       const score = Number(rating);
       if (![company, sector, role, location, headline, pros, cons].every((value) => typeof value === 'string' && value.trim())) return response.status(400).json({ error: 'Complete all required fields' });
       if (!IMPACT_SECTORS.includes(sector)) return response.status(400).json({ error: 'Choose a valid focus sector' });
       if (!Number.isInteger(score) || score < 1 || score > 5) return response.status(400).json({ error: 'Choose a rating from 1 to 5' });
       if (!['anonymous', 'name', 'linkedin'].includes(displayMode)) return response.status(400).json({ error: 'Choose how to display your review identity' });
+      if (companyUrl && !/^https?:\/\//i.test(clean(companyUrl))) return response.status(400).json({ error: 'Company URL must start with http:// or https://' });
       if (displayMode === 'linkedin' && !/^https:\/\/([a-z]{2,3}\.)?linkedin\.com\/in\/[A-Za-z0-9_-]+\/?/i.test(reviewerLinkedin.trim())) return response.status(400).json({ error: 'Add a valid LinkedIn profile URL' });
-      if (company.length > 120 || sector.length > 80 || role.length > 120 || location.length > 120 || salary.length > 120 || headline.length > 180 || pros.length > 1200 || cons.length > 1200 || advice.length > 1200 || reviewerLinkedin.length > 500) return response.status(400).json({ error: 'One or more fields are too long' });
+      if (company.length > 120 || companyUrl.length > 500 || sector.length > 80 || role.length > 120 || location.length > 120 || salary.length > 120 || headline.length > 180 || pros.length > 1200 || cons.length > 1200 || advice.length > 1200 || reviewerLinkedin.length > 500) return response.status(400).json({ error: 'One or more fields are too long' });
       if (!(await rateLimit(request, `review:${clean(company).toLowerCase() || 'missing'}`, 6, 60 * 60 * 1000))) return tooManyRequests(response);
       const reviewerName = session.name || session.company || session.email.split('@')[0];
 
@@ -46,6 +47,7 @@ export default async function handler(request, response) {
         recordType: 'review',
         id: randomUUID(),
         company: clean(company),
+        companyUrl: clean(companyUrl),
         sector: clean(sector),
         role: clean(role),
         location: clean(location),
@@ -94,7 +96,7 @@ export default async function handler(request, response) {
       if (!assertSameOrigin(request)) return forbidden(response);
       const session = readSession(request);
       if (!session) return response.status(401).json({ error: 'Please sign in' });
-      const { id, hidden, company, sector, role, location, rating, salary = '', headline, pros, cons, advice = '', displayMode = 'anonymous', reviewerLinkedin = '' } = request.body || {};
+      const { id, hidden, company, companyUrl = '', sector, role, location, rating, salary = '', headline, pros, cons, advice = '', displayMode = 'anonymous', reviewerLinkedin = '' } = request.body || {};
       const pathname = `reviews/${id}.json`;
       const review = await readRecord(pathname);
       if (!review) return response.status(404).json({ error: 'Review not found' });
@@ -109,11 +111,14 @@ export default async function handler(request, response) {
       if (!IMPACT_SECTORS.includes(sector)) return response.status(400).json({ error: 'Choose a valid focus sector' });
       if (!Number.isInteger(score) || score < 1 || score > 5) return response.status(400).json({ error: 'Choose a rating from 1 to 5' });
       if (!['anonymous', 'name', 'linkedin'].includes(displayMode)) return response.status(400).json({ error: 'Choose how to display your review identity' });
+      if (companyUrl && !/^https?:\/\//i.test(clean(companyUrl))) return response.status(400).json({ error: 'Company URL must start with http:// or https://' });
       if (displayMode === 'linkedin' && !/^https:\/\/([a-z]{2,3}\.)?linkedin\.com\/in\/[A-Za-z0-9_-]+\/?/i.test(reviewerLinkedin.trim())) return response.status(400).json({ error: 'Add a valid LinkedIn profile URL' });
+      if (company.length > 120 || companyUrl.length > 500 || sector.length > 80 || role.length > 120 || location.length > 120 || salary.length > 120 || headline.length > 180 || pros.length > 1200 || cons.length > 1200 || advice.length > 1200 || reviewerLinkedin.length > 500) return response.status(400).json({ error: 'One or more fields are too long' });
       const reviewerName = session.name || session.company || session.email.split('@')[0];
       const updated = {
         ...review,
         company: clean(company),
+        companyUrl: clean(companyUrl),
         sector: clean(sector),
         role: clean(role),
         location: clean(location),

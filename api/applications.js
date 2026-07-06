@@ -1,4 +1,8 @@
-import { appUrl, assertSameOrigin, auditLog, ensureStorage, forbidden, listRecords, methodNotAllowed, productEvent, rateLimit, readRecord, requireApprovedEmployerSession, requireSession, sendEmail, serverError, setSecurityHeaders, stableHash, tooManyRequests, writeRecord } from './_lib.js';
+import { appUrl, assertSameOrigin, auditLog, ensureStorage, forbidden, listRecords, methodNotAllowed, productEvent, rateLimit, readRecord, readSession, requireApprovedEmployerSession, requireSession, sendEmail, serverError, setSecurityHeaders, stableHash, tooManyRequests, writeRecord } from './_lib.js';
+
+function clean(value = '') {
+  return String(value).trim();
+}
 
 export default async function handler(request, response) {
   try {
@@ -8,18 +12,22 @@ export default async function handler(request, response) {
     if (request.method === 'POST') {
       if (!assertSameOrigin(request)) return forbidden(response);
       const { jobId, name = '', email = '', phone = '', location = '', linkedin = '', coverLetter = '', cvAttachment = null, cvText = '', revisedCv = '', linkedinNote = '' } = request.body || {};
-      if (![name, email, coverLetter].every((value) => typeof value === 'string' && value.trim())) return response.status(400).json({ error: 'Complete all required fields' });
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return response.status(400).json({ error: 'Enter a valid email address' });
-      if (name.length > 120 || email.length > 254 || phone.length > 60 || location.length > 120 || linkedin.length > 500 || coverLetter.length > 5000 || cvText.length > 8000 || revisedCv.length > 8000 || linkedinNote.length > 500) return response.status(400).json({ error: 'One or more fields are too long' });
+      const session = readSession(request);
+      const candidateSession = session?.role === 'candidate' ? session : null;
+      const applicantName = clean(name || candidateSession?.name);
+      const applicantEmail = clean(candidateSession?.email || email).toLowerCase();
+      if (![applicantName, applicantEmail, coverLetter].every((value) => typeof value === 'string' && value.trim())) return response.status(400).json({ error: 'Complete all required fields' });
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(applicantEmail)) return response.status(400).json({ error: 'Enter a valid email address' });
+      if (applicantName.length > 120 || applicantEmail.length > 254 || phone.length > 60 || location.length > 120 || linkedin.length > 500 || coverLetter.length > 5000 || cvText.length > 8000 || revisedCv.length > 8000 || linkedinNote.length > 500) return response.status(400).json({ error: 'One or more fields are too long' });
       if (linkedin && !/^https?:\/\//i.test(linkedin.trim())) return response.status(400).json({ error: 'Portfolio link must start with http:// or https://' });
       if (!(await rateLimit(request, `apply:${jobId || 'missing'}`, 10, 60 * 60 * 1000))) return tooManyRequests(response);
       const jobs = (await listRecords('companies/')).filter((item) => item.recordType === 'job' && item.id === jobId && item.status === 'active');
       if (!jobs.length) return response.status(404).json({ error: 'This role is no longer accepting applications' });
       const job = jobs[0];
-      const applicationId = stableHash(`${job.id}:${email.trim().toLowerCase()}`).slice(0, 32);
+      const applicationId = stableHash(`${job.id}:${applicantEmail}`).slice(0, 32);
       const pathname = `companies/${job.companyId}/applications/${applicationId}.json`;
       if (await readRecord(pathname)) return response.status(409).json({ error: 'You have already applied for this role' });
-      const application = { recordType: 'application', id: applicationId, job_id: job.id, companyId: job.companyId, job_title: job.title, name: name.trim(), email: email.trim().toLowerCase(), phone: phone.trim(), location: location.trim(), linkedin: linkedin.trim(), linkedin_note: linkedinNote.trim(), cover_letter: coverLetter.trim(), cvAttachment, cv_text: cvText.trim(), revised_cv: revisedCv.trim(), status: 'applied', created_at: new Date().toISOString() };
+      const application = { recordType: 'application', id: applicationId, job_id: job.id, companyId: job.companyId, job_title: job.title, name: applicantName, email: applicantEmail, phone: phone.trim(), location: location.trim(), linkedin: linkedin.trim(), linkedin_note: linkedinNote.trim(), cover_letter: coverLetter.trim(), cvAttachment, cv_text: cvText.trim(), revised_cv: revisedCv.trim(), status: 'applied', created_at: new Date().toISOString() };
       await writeRecord(pathname, application);
       const profile = await readRecord(`companies/${job.companyId}/profile.json`).catch(() => null);
       await Promise.all([
