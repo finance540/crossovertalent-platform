@@ -3,6 +3,10 @@ import mammoth from 'mammoth';
 import { randomUUID } from 'node:crypto';
 
 const MAX_UPLOAD_BYTES = 1_500_000;
+const PDF_TEXT_MINIMUM = 0.7;
+const OCR_TEXT_MINIMUM = 0.64;
+const OCR_MAX_PAGES = 3;
+const OCR_RENDER_SCALE = 1.35;
 
 function clean(value = '') {
   return String(value).replace(/\s+/g, ' ').trim();
@@ -113,6 +117,11 @@ async function extractPdfText(buffer) {
     if (parser) await parser.destroy();
   }
   try {
+    candidates.push(await extractPdfJsText(buffer));
+  } catch {
+    candidates.push('');
+  }
+  try {
     const text = buffer.toString('latin1');
     candidates.push(text
       .replace(/\\\(/g, '(')
@@ -125,7 +134,131 @@ async function extractPdfText(buffer) {
     .map(normalizeExtractedText)
     .filter(Boolean)
     .sort((a, b) => readabilityScore(b) - readabilityScore(a))[0] || '';
-  return isReadableExtraction(readable, 0.7) ? readable : '';
+  return isReadableExtraction(readable, PDF_TEXT_MINIMUM) ? readable : '';
+}
+
+function pdfJsOptions(buffer) {
+  return {
+    data: new Uint8Array(buffer),
+    disableWorker: true,
+    useSystemFonts: true,
+    cMapPacked: true
+  };
+}
+
+async function loadPdfJsDocument(buffer) {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  return pdfjs.getDocument(pdfJsOptions(buffer)).promise;
+}
+
+async function extractPdfJsText(buffer) {
+  let pdf;
+  try {
+    pdf = await loadPdfJsDocument(buffer);
+    const pages = Math.min(pdf.numPages || 0, 10);
+    const chunks = [];
+    for (let pageNumber = 1; pageNumber <= pages; pageNumber += 1) {
+      const page = await pdf.getPage(pageNumber);
+      const content = await page.getTextContent({ includeMarkedContent: false, disableNormalization: false });
+      chunks.push((content.items || []).map((item) => item.str || '').filter(Boolean).join(' '));
+    }
+    return chunks.join('\n\n');
+  } finally {
+    if (pdf) await pdf.destroy();
+  }
+}
+
+async function renderPdfPagesToImages(buffer) {
+  const { createCanvas } = await import('@napi-rs/canvas');
+  let pdf;
+  try {
+    pdf = await loadPdfJsDocument(buffer);
+    const pages = Math.min(pdf.numPages || 0, OCR_MAX_PAGES);
+    const images = [];
+    for (let pageNumber = 1; pageNumber <= pages; pageNumber += 1) {
+      const page = await pdf.getPage(pageNumber);
+      const viewport = page.getViewport({ scale: OCR_RENDER_SCALE });
+      const width = Math.ceil(viewport.width);
+      const height = Math.ceil(viewport.height);
+      const canvas = createCanvas(width, height);
+      const canvasContext = canvas.getContext('2d');
+      await page.render({ canvasContext, viewport }).promise;
+      images.push({
+        page: pageNumber,
+        mimeType: 'image/png',
+        dataUrl: `data:image/png;base64,${canvas.toBuffer('image/png').toString('base64')}`
+      });
+    }
+    return images;
+  } finally {
+    if (pdf) await pdf.destroy();
+  }
+}
+
+async function openAiOcrImages(images = [], file = {}) {
+  if (!process.env.OPENAI_API_KEY) {
+    return { text: '', fallback: true, reason: 'OPENAI_API_KEY missing' };
+  }
+  if (!images.length) {
+    return { text: '', fallback: true, reason: 'No PDF pages rendered for OCR' };
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || 'gpt-4.1-mini',
+        temperature: 0,
+        max_tokens: 3000,
+        messages: [
+          {
+            role: 'system',
+            content: 'You extract readable job-description or resume text from document page images. Return only the text visible in the document. Preserve headings and bullets. Do not invent missing words, employers, salaries, dates, or facts.'
+          },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: `Extract the readable text from this uploaded ${uploadKind(file)} PDF. If a section is unreadable, omit it instead of guessing.` },
+              ...images.map((image) => ({ type: 'image_url', image_url: { url: image.dataUrl, detail: 'high' } }))
+            ]
+          }
+        ]
+      })
+    });
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      return { text: '', fallback: true, reason: `OpenAI OCR failed with HTTP ${response.status}${body ? `: ${body.slice(0, 140)}` : ''}` };
+    }
+    const data = await response.json();
+    return { text: data.choices?.[0]?.message?.content || '', fallback: false, model: data.model || '' };
+  } catch (error) {
+    return { text: '', fallback: true, reason: error.name === 'AbortError' ? 'OpenAI OCR timed out' : error.message };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function extractPdfWithOcr(buffer, file = {}) {
+  try {
+    const images = await renderPdfPagesToImages(buffer);
+    const result = await openAiOcrImages(images, file);
+    const text = truncate(normalizeExtractedText(result.text), 8000);
+    return {
+      text: isReadableExtraction(text, OCR_TEXT_MINIMUM) ? text : '',
+      fallback: result.fallback,
+      reason: result.reason || '',
+      model: result.model || '',
+      pages: images.length
+    };
+  } catch (error) {
+    return { text: '', fallback: true, reason: error.message, pages: 0 };
+  }
 }
 
 async function extractReadableText(file = {}) {
@@ -137,7 +270,7 @@ async function extractReadableText(file = {}) {
   if (mime.includes('pdf') || name.endsWith('.pdf')) text = await extractPdfText(buffer);
   else if (mime.includes('word') || name.endsWith('.docx') || name.endsWith('.doc')) text = (await extractDocxText(buffer)) || buffer.toString('utf8');
   else text = buffer.toString('utf8');
-  return truncate(normalizeExtractedText(text), 8000);
+  return { text: truncate(normalizeExtractedText(text), 8000), method: mime.includes('pdf') || name.endsWith('.pdf') ? 'pdf-text' : (mime.includes('word') || name.endsWith('.docx') || name.endsWith('.doc') ? 'docx-text' : 'plain-text') };
 }
 
 async function storeUploadedFile(file = {}, buffer, parsedText = '') {
@@ -392,11 +525,27 @@ export default async function handler(request, response) {
     if (action === 'parse-document') {
       const buffer = decodeUpload(file);
       assertFileSignature(file, buffer);
-      const text = await extractReadableText({ ...file, data: buffer.toString('base64') });
-      if (!isReadableExtraction(text, 0.7)) return response.status(422).json({ error: 'The file uploaded, but readable text could not be extracted. This usually means the PDF is scanned, image-based, encrypted, or uses embedded font encoding. Upload a text-based PDF/DOCX/TXT or paste the JD content manually.' });
+      const mime = String(file?.type || '').toLowerCase();
+      const name = String(file?.name || '').toLowerCase();
+      const isPdf = mime.includes('pdf') || name.endsWith('.pdf');
+      let { text, method } = await extractReadableText({ ...file, data: buffer.toString('base64') });
+      let ocr = null;
+      if (isPdf && !isReadableExtraction(text, PDF_TEXT_MINIMUM)) {
+        ocr = await extractPdfWithOcr(buffer, file);
+        if (ocr.text) {
+          text = ocr.text;
+          method = 'ocr';
+        }
+        await auditLog('pdf.ocr_attempted', { entityType: 'uploaded_file', metadata: { fileName: clean(file?.name), success: Boolean(ocr.text), reason: ocr.reason || '', pages: ocr.pages || 0, model: ocr.model || '' } });
+      }
+      if (!isReadableExtraction(text, method === 'ocr' ? OCR_TEXT_MINIMUM : PDF_TEXT_MINIMUM)) {
+        const ocrUnavailable = isPdf && ocr?.reason;
+        const detail = ocrUnavailable ? ` OCR could not complete: ${ocr.reason}.` : '';
+        return response.status(422).json({ error: `The file uploaded, but readable text could not be extracted.${detail} Upload a clearer text-based PDF/DOCX/TXT, try a higher-quality scan, or paste the JD content manually.` });
+      }
       const stored = await storeUploadedFile(file, buffer, text);
       await productEvent(uploadKind(file) === 'cv' ? 'cv_uploaded' : 'file_uploaded', { entityType: 'uploaded_file', entityId: stored.id, metadata: { kind: stored.kind, fileType: stored.fileType, fileSize: stored.fileSize, parsed: Boolean(text) } });
-      return response.json({ text, file: { name: clean(file?.name), type: clean(file?.type), size: Number(file?.size || 0), storage: stored }, confidence: parsingConfidence(text), readabilityScore: Number(readabilityScore(text).toFixed(2)) });
+      return response.json({ text, file: { name: clean(file?.name), type: clean(file?.type), size: Number(file?.size || 0), storage: stored }, confidence: parsingConfidence(text), readabilityScore: Number(readabilityScore(text).toFixed(2)), extractionMethod: method, ocrFallback: method === 'ocr', ocrPages: ocr?.pages || 0 });
     }
     if (action === 'generate-job-description') {
       const session = requireSession(request, response);

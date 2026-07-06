@@ -76,6 +76,11 @@ includes('assist', /storageFallback/, 'upload fallback state is still surfaced w
 includes('assist', /readabilityScore/, 'document parsing quality scoring exists');
 includes('assist', /Adobe\\s\+UCS/, 'PDF parser rejects encoded font map noise');
 includes('assist', /readable text could not be extracted/, 'unreadable PDFs return clear fallback guidance');
+includes('assist', /extractPdfJsText/, 'pdf.js text extraction fallback exists');
+includes('assist', /renderPdfPagesToImages/, 'PDF pages can be rendered for OCR fallback');
+includes('assist', /openAiOcrImages/, 'OpenAI vision OCR fallback exists for scanned PDFs');
+includes('assist', /extractionMethod/, 'document parser returns extraction method');
+includes('app', /OCR parsed/, 'upload UI reports OCR parsing when used');
 includes('app', /history\.replaceState\(\{\}, '', '\/\?dashboard=1'\)/, 'employer redirects to dashboard');
 includes('app', /history\.replaceState\(\{\}, '', '\/\?candidate=dashboard'\)/, 'candidate redirects to dashboard');
 includes('auth', /employer_status: 'pending_review'/, 'new employers default to pending review');
