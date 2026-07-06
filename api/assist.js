@@ -235,8 +235,11 @@ async function openAiOcrImages(images = [], file = {}) {
       })
     });
     if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      return { text: '', fallback: true, reason: `OpenAI OCR failed with HTTP ${response.status}${body ? `: ${body.slice(0, 140)}` : ''}` };
+      await response.text().catch(() => '');
+      const reason = response.status === 401
+        ? 'OpenAI OCR key is invalid or not authorized'
+        : `OpenAI OCR provider failed with HTTP ${response.status}`;
+      return { text: '', fallback: true, reason };
     }
     const data = await response.json();
     return { text: data.choices?.[0]?.message?.content || '', fallback: false, model: data.model || '' };
