@@ -1275,9 +1275,10 @@ $('#job-attachment').addEventListener('change', async (event) => {
     form.elements.sourceText.value = parsed.text;
     form.elements.sourceAttachment.value = JSON.stringify(parsed.file);
     if (parsed.text && !form.elements.description.value.trim()) form.elements.description.value = parsed.text.slice(0, 5000);
-    $('#job-parse-status').textContent = `${parsed.file.name} uploaded, parsed, and attached with ${parsed.confidence} confidence.`;
+    const confidence = parsed.readabilityScore ? `${parsed.confidence} confidence (${Math.round(parsed.readabilityScore * 100)}% readable)` : `${parsed.confidence} confidence`;
+    $('#job-parse-status').textContent = `${parsed.file.name} uploaded, parsed, and attached with ${confidence}.`;
   } catch (error) {
-    $('#job-parse-status').textContent = 'Parsing failed.';
+    $('#job-parse-status').textContent = 'Parsing failed. Upload a text-based PDF/DOCX/TXT or paste the JD content manually.';
     toast(error.message, true);
   }
 });

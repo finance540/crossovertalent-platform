@@ -12,6 +12,47 @@ function truncate(value = '', max = 6000) {
   return clean(value).slice(0, max);
 }
 
+function normalizeExtractedText(value = '') {
+  return String(value)
+    .replace(/\u0000/g, ' ')
+    .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, ' ')
+    .replace(/\b([A-Za-z])\s+(?=[A-Za-z]\b)/g, '$1')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function readabilityScore(value = '') {
+  const text = normalizeExtractedText(value);
+  if (!text) return 0;
+  if (/Adobe\s+UCS|beginbfchar|beginbfrange|\/CIDInit|\/ToUnicode/i.test(text)) return 0;
+  const compact = text.replace(/\s/g, '');
+  if (!compact) return 0;
+  const letters = (compact.match(/[A-Za-z]/g) || []).length;
+  const numbers = (compact.match(/[0-9]/g) || []).length;
+  const normalPunctuation = (compact.match(/[.,;:!?'"()/%&+\-@#]/g) || []).length;
+  const readableChars = letters + numbers + normalPunctuation;
+  const charScore = readableChars / compact.length;
+  const words = text.split(/\s+/).filter(Boolean);
+  const wordScore = words.length ? words.filter((word) => /[A-Za-z]{2,}/.test(word)).length / words.length : 0;
+  const longSymbolRuns = (text.match(/[^\w\s.,;:!?'"()/%&+\-@#]{4,}/g) || []).length;
+  const symbolPenalty = Math.min(0.35, longSymbolRuns * 0.04);
+  return Math.max(0, Math.min(1, (charScore * 0.58) + (wordScore * 0.42) - symbolPenalty));
+}
+
+function isReadableExtraction(value = '', minimum = 0.7) {
+  const text = normalizeExtractedText(value);
+  if (text.length < 12) return false;
+  return readabilityScore(text) >= minimum;
+}
+
+function parsingConfidence(value = '') {
+  const score = readabilityScore(value);
+  if (score >= 0.9) return 'high';
+  if (score >= 0.78) return 'medium';
+  return 'low';
+}
+
 function decodeUpload(file = {}) {
   const raw = String(file.data || '').replace(/^data:[^;]+;base64,/, '');
   const buffer = Buffer.from(raw, 'base64');
@@ -60,20 +101,31 @@ async function extractDocxText(buffer) {
 
 async function extractPdfText(buffer) {
   let parser;
+  const candidates = [];
   try {
     const { PDFParse } = await import('pdf-parse');
     parser = new PDFParse({ data: buffer });
     const result = await parser.getText();
-    return result.text || '';
+    candidates.push(result.text || '');
   } catch {
-    const text = buffer.toString('latin1');
-    return text
-      .replace(/\\\(/g, '(')
-      .replace(/\\\)/g, ')')
-      .match(/\(([^()]{3,})\)/g)?.map((chunk) => chunk.slice(1, -1)).join(' ') || '';
+    // Fall through to a conservative literal-string fallback below.
   } finally {
     if (parser) await parser.destroy();
   }
+  try {
+    const text = buffer.toString('latin1');
+    candidates.push(text
+      .replace(/\\\(/g, '(')
+      .replace(/\\\)/g, ')')
+      .match(/\(([^()]{3,})\)/g)?.map((chunk) => chunk.slice(1, -1)).join(' ') || '');
+  } catch {
+    candidates.push('');
+  }
+  const readable = candidates
+    .map(normalizeExtractedText)
+    .filter(Boolean)
+    .sort((a, b) => readabilityScore(b) - readabilityScore(a))[0] || '';
+  return isReadableExtraction(readable, 0.7) ? readable : '';
 }
 
 async function extractReadableText(file = {}) {
@@ -85,7 +137,7 @@ async function extractReadableText(file = {}) {
   if (mime.includes('pdf') || name.endsWith('.pdf')) text = await extractPdfText(buffer);
   else if (mime.includes('word') || name.endsWith('.docx') || name.endsWith('.doc')) text = (await extractDocxText(buffer)) || buffer.toString('utf8');
   else text = buffer.toString('utf8');
-  return truncate(text.replace(/[^\x09\x0A\x0D\x20-\x7E]/g, ' '), 8000);
+  return truncate(normalizeExtractedText(text), 8000);
 }
 
 async function storeUploadedFile(file = {}, buffer, parsedText = '') {
@@ -341,10 +393,10 @@ export default async function handler(request, response) {
       const buffer = decodeUpload(file);
       assertFileSignature(file, buffer);
       const text = await extractReadableText({ ...file, data: buffer.toString('base64') });
-      if (!text || text.length < 12) return response.status(422).json({ error: 'The file uploaded, but text could not be extracted. Try a text-based PDF/DOCX or paste the content manually.' });
+      if (!isReadableExtraction(text, 0.7)) return response.status(422).json({ error: 'The file uploaded, but readable text could not be extracted. This usually means the PDF is scanned, image-based, encrypted, or uses embedded font encoding. Upload a text-based PDF/DOCX/TXT or paste the JD content manually.' });
       const stored = await storeUploadedFile(file, buffer, text);
       await productEvent(uploadKind(file) === 'cv' ? 'cv_uploaded' : 'file_uploaded', { entityType: 'uploaded_file', entityId: stored.id, metadata: { kind: stored.kind, fileType: stored.fileType, fileSize: stored.fileSize, parsed: Boolean(text) } });
-      return response.json({ text, file: { name: clean(file?.name), type: clean(file?.type), size: Number(file?.size || 0), storage: stored }, confidence: text.length > 80 ? 'medium' : 'low' });
+      return response.json({ text, file: { name: clean(file?.name), type: clean(file?.type), size: Number(file?.size || 0), storage: stored }, confidence: parsingConfidence(text), readabilityScore: Number(readabilityScore(text).toFixed(2)) });
     }
     if (action === 'generate-job-description') {
       const session = requireSession(request, response);

@@ -73,6 +73,9 @@ includes('ops', /invalid_api_key/, 'readiness distinguishes invalid Supabase API
 includes('ops', /permission_or_rls_denied/, 'readiness distinguishes permission or RLS failures');
 includes('company', /Logo upload failed/, 'logo upload fails clearly when production storage fails');
 includes('assist', /storageFallback/, 'upload fallback state is still surfaced where allowed');
+includes('assist', /readabilityScore/, 'document parsing quality scoring exists');
+includes('assist', /Adobe\\s\+UCS/, 'PDF parser rejects encoded font map noise');
+includes('assist', /readable text could not be extracted/, 'unreadable PDFs return clear fallback guidance');
 includes('app', /history\.replaceState\(\{\}, '', '\/\?dashboard=1'\)/, 'employer redirects to dashboard');
 includes('app', /history\.replaceState\(\{\}, '', '\/\?candidate=dashboard'\)/, 'candidate redirects to dashboard');
 includes('auth', /employer_status: 'pending_review'/, 'new employers default to pending review');
