@@ -7,6 +7,7 @@ const PDF_TEXT_MINIMUM = 0.7;
 const OCR_TEXT_MINIMUM = 0.64;
 const OCR_MAX_PAGES = 3;
 const OCR_RENDER_SCALE = 1.35;
+const OCR_TIMEOUT_MS = 7500;
 
 function clean(value = '') {
   return String(value).replace(/\s+/g, ' ').trim();
@@ -149,6 +150,7 @@ function pdfJsOptions(buffer) {
 
 async function loadPdfJsDocument(buffer) {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  await import('pdfjs-dist/legacy/build/pdf.worker.mjs');
   return pdfjs.getDocument(pdfJsOptions(buffer)).promise;
 }
 
@@ -204,7 +206,7 @@ async function openAiOcrImages(images = [], file = {}) {
     return { text: '', fallback: true, reason: 'No PDF pages rendered for OCR' };
   }
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12000);
+  const timeout = setTimeout(() => controller.abort(), OCR_TIMEOUT_MS);
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',

@@ -641,7 +641,7 @@ async function uploadCandidateResume(event) {
     $('#candidate-resume-upload-status').textContent = `${parsed.file.fileName || parsed.file.name || file.name} uploaded, ${method}, and saved to your profile with ${confidence}.`;
     toast('CV uploaded and saved');
   } catch (error) {
-    $('#candidate-resume-upload-status').textContent = 'CV upload or parsing failed. Try a clearer text-based PDF/DOCX/TXT or paste the CV content manually.';
+    $('#candidate-resume-upload-status').textContent = `CV upload or parsing failed. ${error.message || 'Try a clearer text-based PDF/DOCX/TXT or paste the CV content manually.'}`;
     toast(error.message, true);
   } finally {
     event.target.value = '';
@@ -1284,7 +1284,7 @@ $('#job-attachment').addEventListener('change', async (event) => {
     const method = parsed.extractionMethod === 'ocr' ? 'OCR parsed' : 'parsed';
     $('#job-parse-status').textContent = `${parsed.file.name} uploaded, ${method}, and attached with ${confidence}.`;
   } catch (error) {
-    $('#job-parse-status').textContent = 'Parsing failed. Try a clearer text-based PDF/DOCX/TXT, a higher-quality scan, or paste the JD content manually.';
+    $('#job-parse-status').textContent = `Parsing failed. ${error.message || 'Try a clearer text-based PDF/DOCX/TXT, a higher-quality scan, or paste the JD content manually.'}`;
     toast(error.message, true);
   }
 });
@@ -1351,7 +1351,7 @@ $('#cv-attachment').addEventListener('change', async (event) => {
     const method = parsed.extractionMethod === 'ocr' ? 'OCR parsed' : 'parsed';
     $('#cv-parse-status').textContent = `${parsed.file.name} uploaded, ${method}, and attached with ${confidence}.`;
   } catch (error) {
-    $('#cv-parse-status').textContent = 'CV parsing failed. Try a clearer text-based PDF/DOCX/TXT or paste the CV content manually.';
+    $('#cv-parse-status').textContent = `CV parsing failed. ${error.message || 'Try a clearer text-based PDF/DOCX/TXT or paste the CV content manually.'}`;
     toast(error.message, true);
   }
 });
