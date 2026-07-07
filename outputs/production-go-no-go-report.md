@@ -6,9 +6,9 @@ Date: 2026-07-06 JST
 
 **GO - Production remains live for controlled beta.**
 
-**NO-GO - Scale-up / broad real-world rollout until the open P1 OCR blocker is fixed and protected dashboard QA is completed with real approved credentials.**
+**NO-GO - Scale-up / broad real-world rollout until the open P1 OCR blocker is fixed, LinkedIn completed login is fixed, and protected dashboard QA is completed with real approved credentials.**
 
-The latest live QA pass against `https://crossovertalent.asia` confirms the core public platform, auth gates, production Supabase readiness, uploads for text-based files, OAuth start flows, public application submission, and admin route protection are functioning. One P1 issue remains open: scanned/image PDF parsing cannot complete OCR because the production OpenAI key is invalid or not authorized for the configured vision-capable model.
+The latest live QA pass against `https://crossovertalent.asia` confirms the core public platform, auth gates, production Supabase readiness, uploads for text-based files, OAuth start flows, public application submission, and admin route protection are functioning. One P1 issue remains open: scanned/image PDF parsing cannot complete OCR because the production OpenAI project is returning quota/rate-limit errors.
 
 ## Latest QA Evidence
 
@@ -40,6 +40,7 @@ The latest live QA pass against `https://crossovertalent.asia` confirms the core
 | Employer jobs route protection | PASS | Unauthenticated `/api/jobs` HTTP `401` |
 | Google OAuth start | PASS | Redirects to production Supabase OAuth authorize URL |
 | LinkedIn OAuth start | PASS | Redirects to production Supabase OAuth authorize URL |
+| LinkedIn completed OAuth login | FAIL | LinkedIn rejects the production Supabase callback with `redirect_uri does not match the registered value` |
 | Phone OTP prepared-disabled state | PASS | Clear HTTP `503` configuration message |
 | Candidate registration gate | PASS | New candidate requires email verification |
 | Employer registration gate | PASS | New employer defaults to review/verification gate |
@@ -55,7 +56,8 @@ The latest live QA pass against `https://crossovertalent.asia` confirms the core
 
 | Bug ID | Severity | Status | Recommendation |
 |---|---:|---|---|
-| `LIVE-P1-OCR-001` | P1 | Partially fixed in code, production validation pending | Code now supports `OPENAI_OCR_API_KEY` plus multiple vision model fallbacks and declares the PDF renderer dependency directly. Configure a valid production OpenAI OCR key/model, deploy, then rerun scanned PDF upload QA. |
+| `LIVE-P1-OCR-001` | P1 | Code fix deployed; provider quota still open | Code now supports `OPENAI_OCR_API_KEY` plus multiple vision model fallbacks, declares the PDF renderer dependency directly, and reports HTTP `429` clearly. Enable billing/raise quota or configure `OPENAI_OCR_API_KEY` with available vision-model quota, then rerun scanned PDF upload QA. |
+| `LIVE-P1-AUTH-LINKEDIN-001` | P1 | Open | Save `https://hntvcqahoseizmgswohq.supabase.co/auth/v1/callback` in LinkedIn Developer -> Auth -> Authorized redirect URLs. If LinkedIn continues rejecting valid HTTPS URLs, create a fresh LinkedIn app under the verified company, enable OpenID Connect, save the callback URL, then rotate LinkedIn credentials in Supabase. |
 
 ## Fix Iteration - 2026-07-06 JST
 
@@ -68,8 +70,12 @@ The latest live QA pass against `https://crossovertalent.asia` confirms the core
 | Structural parser tests updated | Done |
 | Local lint/typecheck/build/test | PASS |
 | Local Playwright E2E | PASS - 6/6 |
+| Commit pushed | `56e1ac8` |
+| OCR quota handling commit pushed | `42e9967` |
+| Production `/api/ready` after push | PASS - HTTP 200 |
+| Live QA rerun after push | PASS except OCR provider quota/rate-limit |
 
-The remaining risk is external provider configuration: if Vercel Production still has an invalid OpenAI key, OCR cannot succeed because scanned PDFs contain images, not extractable text.
+The remaining risk is external provider capacity: if Vercel Production uses an OpenAI project without active billing or available vision-model quota, OCR cannot succeed because scanned PDFs contain images, not extractable text.
 
 ## Blocked Manual QA
 
@@ -78,13 +84,15 @@ The remaining risk is external provider configuration: if Vercel Production stil
 | Approved employer dashboard | BLOCKED | Approved employer QA credentials or admin approval of QA employer |
 | Verified candidate dashboard | BLOCKED | Verified candidate QA credentials or completed email verification |
 | Admin moderation dashboard | BLOCKED | Existing admin QA credentials |
-| Full Google/LinkedIn callback | BLOCKED | Interactive third-party OAuth login credentials |
+| Full Google callback | BLOCKED | Interactive Google OAuth login credentials |
+| Full LinkedIn callback | FAIL | LinkedIn redirect URL registration is missing/not accepted in the LinkedIn Developer app |
 
 ## Final Recommendation
 
 Production can remain live for controlled beta, but do not scale onboarding until:
 
-1. The OpenAI OCR key/provider issue is fixed in Vercel Production, the new code is deployed, and scanned PDF parsing passes.
-2. Verified candidate, approved employer, and admin QA credentials are supplied and protected dashboard workflows are re-tested.
+1. The OpenAI OCR billing/quota issue is fixed in Vercel Production and scanned PDF parsing passes.
+2. LinkedIn Developer accepts the Supabase callback URL and completed LinkedIn login passes for candidate and employer.
+3. Verified candidate, approved employer, and admin QA credentials are supplied and protected dashboard workflows are re-tested.
 
-DNS changes are not required for this QA finding. No rollback is recommended because the open issue affects scanned PDF OCR only; text-based PDF, DOCX, and TXT parsing pass.
+DNS changes are not required for these QA findings. No rollback is recommended because email/password login, Google OAuth start, text-based PDF/DOCX/TXT parsing, and the core app remain available; however, do not advertise LinkedIn login or scanned-PDF OCR as fully working until the provider-side blockers are closed.

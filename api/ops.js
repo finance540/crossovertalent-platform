@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { appUrl, assertSameOrigin, auditLog, configuredSupabaseAdminKey, configuredSupabasePublishableKey, configuredSupabaseUrl, createSession, employerStatus, employerStatusMessage, ensureStorage, forbidden, listRecords, methodNotAllowed, probeSupabaseDatabase, productEvent, rateLimit, readRecord, readSession, sendEmail, serverError, setSecurityHeaders, setSessionCookie, stableHash, supabaseKeyType, tooManyRequests, writeRecord } from './_lib.js';
 
 const SUPPORT_TYPES = ['feedback', 'bug', 'support', 'feature'];
@@ -270,14 +270,118 @@ async function emailTemplates(request, response) {
 }
 
 function authProviderStatus() {
+  const linkedInDirectConfigured = Boolean(linkedInClientId() && linkedInClientSecret() && linkedInRedirectUri());
   return {
     supabaseAuthConfigured: Boolean(configuredSupabaseUrl() && configuredSupabasePublishableKey()),
+    linkedInDirectConfigured,
     providers: {
       google: { configured: process.env.AUTH_GOOGLE_ENABLED === 'true', setupRequired: process.env.AUTH_GOOGLE_ENABLED !== 'true' },
       linkedin: { configured: process.env.AUTH_LINKEDIN_ENABLED === 'true', setupRequired: process.env.AUTH_LINKEDIN_ENABLED !== 'true' },
       phone: { configured: process.env.AUTH_PHONE_OTP_ENABLED === 'true', setupRequired: process.env.AUTH_PHONE_OTP_ENABLED !== 'true' }
     },
     employerApprovalEnforced: true
+  };
+}
+
+function linkedInClientId() {
+  return process.env.LINKEDIN_CLIENT_ID || '';
+}
+
+function linkedInClientSecret() {
+  return process.env.LINKEDIN_CLIENT_SECRET || '';
+}
+
+function linkedInRedirectUri() {
+  return process.env.LINKEDIN_REDIRECT_URI || process.env.LINKEDIN_OAUTH_REDIRECT_URI || 'https://www.crossovertalent.asia';
+}
+
+function linkedInDirectEnabled() {
+  return process.env.LINKEDIN_DIRECT_OAUTH_ENABLED === 'true' || Boolean(linkedInClientId() && linkedInClientSecret());
+}
+
+function base64url(value) {
+  return Buffer.from(value).toString('base64url');
+}
+
+function signLinkedInState(role = 'candidate') {
+  const secret = process.env.SESSION_SECRET || '';
+  if (secret.length < 32) throw new Error('LinkedIn OAuth state signing is not configured');
+  const payload = base64url(JSON.stringify({
+    role: ['employer', 'candidate', 'admin'].includes(role) ? role : 'candidate',
+    nonce: randomUUID(),
+    createdAt: Date.now(),
+    redirectUri: linkedInRedirectUri()
+  }));
+  const signature = createHmac('sha256', secret).update(payload).digest('base64url');
+  return `${payload}.${signature}`;
+}
+
+function verifyLinkedInState(state = '') {
+  const secret = process.env.SESSION_SECRET || '';
+  const [payload, signature] = String(state).split('.');
+  if (!secret || !payload || !signature) throw Object.assign(new Error('Invalid LinkedIn OAuth state'), { status: 400 });
+  const expected = createHmac('sha256', secret).update(payload).digest('base64url');
+  const providedBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (providedBuffer.length !== expectedBuffer.length || !timingSafeEqual(providedBuffer, expectedBuffer)) {
+    throw Object.assign(new Error('Invalid LinkedIn OAuth state'), { status: 400 });
+  }
+  const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+  if (!parsed.createdAt || Date.now() - parsed.createdAt > 10 * 60 * 1000) {
+    throw Object.assign(new Error('LinkedIn OAuth state has expired. Try signing in again.'), { status: 400 });
+  }
+  return parsed;
+}
+
+function linkedInAuthorizeUrl(role = 'candidate') {
+  if (!linkedInClientId()) throw new Error('LinkedIn OAuth client ID is not configured');
+  const url = new URL('https://www.linkedin.com/oauth/v2/authorization');
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('client_id', linkedInClientId());
+  url.searchParams.set('redirect_uri', linkedInRedirectUri());
+  url.searchParams.set('scope', 'openid profile email');
+  url.searchParams.set('state', signLinkedInState(role));
+  return url.toString();
+}
+
+async function exchangeLinkedInCode(code = '', redirectUri = '') {
+  if (!code || code.length < 8) throw Object.assign(new Error('LinkedIn did not return a valid authorization code'), { status: 400 });
+  if (!linkedInClientId() || !linkedInClientSecret()) throw Object.assign(new Error('LinkedIn OAuth credentials are not configured'), { status: 503 });
+  const tokenResponse = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: redirectUri || linkedInRedirectUri(),
+      client_id: linkedInClientId(),
+      client_secret: linkedInClientSecret()
+    })
+  });
+  const tokenData = await tokenResponse.json().catch(() => ({}));
+  if (!tokenResponse.ok) {
+    const error = new Error(tokenData.error_description || tokenData.error || 'LinkedIn token exchange failed');
+    error.status = tokenResponse.status;
+    throw error;
+  }
+  const profileResponse = await fetch('https://api.linkedin.com/v2/userinfo', {
+    headers: { authorization: `Bearer ${tokenData.access_token}` }
+  });
+  const profile = await profileResponse.json().catch(() => ({}));
+  if (!profileResponse.ok) {
+    const error = new Error(profile.error_description || profile.message || 'LinkedIn profile lookup failed');
+    error.status = profileResponse.status;
+    throw error;
+  }
+  return {
+    id: profile.sub ? `linkedin:${profile.sub}` : `linkedin:${stableHash(profile.email || tokenData.access_token).slice(0, 24)}`,
+    email: profile.email || '',
+    email_confirmed_at: profile.email_verified ? new Date().toISOString() : '',
+    user_metadata: {
+      full_name: profile.name || [profile.given_name, profile.family_name].filter(Boolean).join(' '),
+      name: profile.name || '',
+      picture: profile.picture || ''
+    }
   };
 }
 
@@ -464,6 +568,12 @@ async function authProvider(request, response) {
         ...status
       });
     }
+    if (provider === 'linkedin' && linkedInDirectEnabled()) {
+      if (!linkedInClientId() || !linkedInClientSecret()) {
+        return response.status(503).json({ error: 'LinkedIn direct OAuth is enabled but credentials are not configured', ...status });
+      }
+      return response.redirect(302, linkedInAuthorizeUrl(role));
+    }
     const authUrl = new URL('/auth/v1/authorize', configuredSupabaseUrl());
     authUrl.searchParams.set('provider', provider === 'linkedin' ? 'linkedin_oidc' : 'google');
     authUrl.searchParams.set('redirect_to', appUrl(`/?auth_callback=1&role=${encodeURIComponent(role)}`));
@@ -475,6 +585,12 @@ async function authProvider(request, response) {
   if (action === 'complete-oauth') {
     const user = await supabaseUserFromAccessToken(accessToken);
     return completeProviderLogin(request, response, { user, role: clean(role, 30).toLowerCase(), provider: clean(provider || 'oauth', 30), company, name });
+  }
+  if (action === 'complete-linkedin') {
+    const { code = '', state = '' } = request.body || {};
+    const verifiedState = verifyLinkedInState(state);
+    const user = await exchangeLinkedInCode(clean(code, 2048), verifiedState.redirectUri || linkedInRedirectUri());
+    return completeProviderLogin(request, response, { user, role: clean(verifiedState.role || role, 30).toLowerCase(), provider: 'linkedin', company, name });
   }
   if (!['start-phone-otp', 'verify-phone-otp'].includes(action)) return response.status(400).json({ error: 'Choose a valid auth provider action' });
   if (!status.supabaseAuthConfigured || !status.providers.phone.configured) {

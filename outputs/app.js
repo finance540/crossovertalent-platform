@@ -399,10 +399,33 @@ async function handleProviderSessionResponse(response, role, noticeSelector = '#
 async function completeOAuthCallback() {
   const params = new URLSearchParams(location.search);
   const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const code = params.get('code') || '';
+  const directState = params.get('state') || '';
   const accessToken = hash.get('access_token') || '';
   const role = params.get('role') || 'candidate';
   const provider = hash.get('provider_token') ? 'oauth' : 'oauth';
   let completed = false;
+  if (code && directState) {
+    let fallbackPath = '/?candidate=login';
+    try {
+      const response = await api('/api/auth-provider', { method: 'POST', body: JSON.stringify({ action: 'complete-linkedin', code, state: directState }) });
+      await handleProviderSessionResponse(response, response.candidate ? 'candidate' : response.admin ? 'admin' : 'employer', response.candidate ? '#candidate-auth-subtitle' : '#auth-subtitle');
+      completed = true;
+      return;
+    } catch (error) {
+      if (error.employer_status) {
+        openAuth('login');
+        showEmployerStatusNotice('#auth-subtitle', error);
+        fallbackPath = '/?login=1';
+      } else {
+        openCandidateAuth('login');
+      }
+      toast(error.message || 'LinkedIn login could not be completed.', true);
+    } finally {
+      if (!completed) history.replaceState({}, '', fallbackPath);
+    }
+    return;
+  }
   if (!accessToken) {
     showScreen('landing');
     toast('Social login returned without a Supabase access token. Check the Supabase Auth flow configuration.', true);
@@ -967,7 +990,7 @@ async function loadPublicJobs() {
     $('#public-market').innerHTML = skeleton(5);
     const params = new URLSearchParams(location.search);
     const companyId = params.get('company');
-    const [data, reviewsData, salariesData, candidateData] = await Promise.all([api(`/api/jobs?public=1${companyId ? `&company=${encodeURIComponent(companyId)}` : ''}`), api('/api/reviews'), api('/api/salary-signals'), api('/api/candidate').catch(() => null)]);
+    const [data, reviewsData, salariesData, candidateData] = await Promise.all([api(`/api/jobs?public=1${companyId ? `&company=${encodeURIComponent(companyId)}` : ''}`), api('/api/reviews'), api('/api/salary-signals'), api('/api/candidate?optional=1').catch(() => null)]);
     state.publicJobs = data.jobs;
     state.publicReviews = reviewsData.reviews;
     state.publicSalarySignals = salariesData.signals || [];
@@ -1521,7 +1544,7 @@ async function init() {
     await loadPublicJobs();
     return;
   }
-  if (params.has('auth_callback')) {
+  if (params.has('auth_callback') || (params.has('code') && params.has('state'))) {
     await completeOAuthCallback();
     return;
   }

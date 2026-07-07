@@ -78,6 +78,10 @@ export default async function handler(request, response) {
       return response.json({ ok: true });
     }
     if (request.method === 'GET') {
+      if (request.query.optional === '1') {
+        const session = readSession(request);
+        if (!session || session.role !== 'candidate') return response.json({ candidate: null, applications: [] });
+      }
       const candidate = await currentCandidate(request, response);
       if (!candidate) return;
       const applications = await candidateApplications(candidate.email);

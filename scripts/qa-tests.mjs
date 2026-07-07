@@ -109,6 +109,9 @@ includes('ops', /employerStatusMessage\(updated\)/, 'provider employer login sti
 includes('ops', /AUTH_GOOGLE_ENABLED/, 'Google provider config gate exists');
 includes('ops', /AUTH_LINKEDIN_ENABLED/, 'LinkedIn provider config gate exists');
 includes('ops', /AUTH_PHONE_OTP_ENABLED/, 'phone OTP provider config gate exists');
+includes('ops', /LINKEDIN_CLIENT_SECRET/, 'direct LinkedIn OAuth server-side credential gate exists');
+includes('ops', /complete-linkedin/, 'direct LinkedIn OAuth callback completion exists');
+includes('app', /params\.has\('code'\) && params\.has\('state'\)/, 'direct LinkedIn OAuth browser callback is detected');
 includes('html', /id="assistant-widget-button"/, 'AI navigation assistant widget renders globally');
 includes('html', /id="assistant-panel"/, 'AI navigation assistant panel exists');
 includes('app', /assistantPrompts/, 'assistant suggested prompts change by role');
