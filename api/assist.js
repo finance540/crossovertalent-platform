@@ -33,14 +33,178 @@ function truncate(value = '', max = 6000) {
   return clean(value).slice(0, max);
 }
 
+function truncateLines(value = '', max = 8000) {
+  return String(value)
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, max)
+    .trim();
+}
+
 function normalizeExtractedText(value = '') {
   return String(value)
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
     .replace(/\u0000/g, ' ')
     .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, ' ')
     .replace(/\b([A-Za-z])\s+(?=[A-Za-z]\b)/g, '$1')
+    .replace(/\bPage\s+\d+\s+of\s+\d+\b/gi, '\n')
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+function uniqueLines(values = []) {
+  const seen = new Set();
+  return values
+    .map(clean)
+    .filter(Boolean)
+    .filter((item) => {
+      const key = item.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function titleCaseFromSlug(value = '') {
+  return clean(value)
+    .split(/[-_.]+/)
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function compactProfileText(value = '') {
+  return normalizeExtractedText(value)
+    .replace(/\s*\|\s*/g, ' | ')
+    .replace(/\s+([,.;:])/g, '$1')
+    .replace(/([a-z])([A-Z][a-z])/g, '$1 $2')
+    .replace(/([a-z])(\d{4,})/g, '$1 $2')
+    .replace(/(\d{4,})([A-Za-z])/g, '$1 $2')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function extractBetween(text = '', start, endPatterns = []) {
+  const source = String(text);
+  const startMatch = source.match(start);
+  if (!startMatch) return '';
+  const startIndex = startMatch.index + startMatch[0].length;
+  const rest = source.slice(startIndex);
+  const endIndexes = endPatterns
+    .map((pattern) => {
+      const match = rest.match(pattern);
+      return match ? match.index : -1;
+    })
+    .filter((index) => index >= 0);
+  const endIndex = endIndexes.length ? Math.min(...endIndexes) : rest.length;
+  return clean(rest.slice(0, endIndex));
+}
+
+function bulletList(values = [], max = 12) {
+  return uniqueLines(values)
+    .filter((item) => item.length > 1)
+    .slice(0, max)
+    .map((item) => `- ${item}`)
+    .join('\n');
+}
+
+function splitInlineList(value = '') {
+  const normalized = String(value)
+    .replace(/\bRetained Search\b/g, '\nRetained Search\n')
+    .replace(/\bTalent Mapping\b/g, '\nTalent Mapping\n')
+    .replace(/\bGTM Hiring\b/g, '\nGTM Hiring\n')
+    .replace(/\bExecutive Search\b/g, '\nExecutive Search\n');
+  return uniqueLines(String(value)
+    .replace(value, normalized)
+    .split(/\s{2,}|,|;|\n|(?<=\))\s+(?=[A-Z][A-Za-z]+(?:\s|$))/)
+    .map((item) => item.replace(/^[-•]\s*/, '')));
+}
+
+function formatExperienceText(value = '') {
+  const text = compactProfileText(value)
+    .replace(/\s+(?=(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|June|July|August|September|October|November|December)\s+\d{4}\s+-)/gi, '\n')
+    .replace(/\s+(?=(?:Executive Search|Technical Recruiter|Partner|Director|Head|Lead|Consultant|Manager|Vice President|Principal|Chief|Country Head)\b)/g, '\n')
+    .replace(/\s+(?=(?:Zensho Agency|CrossOver Talent|Cross Over Talent|THC Consulting|Sattva Consulting|Oracle|Longhouse Consulting)\b)/g, '\n');
+  return uniqueLines(text.split(/\n+/))
+    .filter((line) => line.length > 2)
+    .slice(0, 28)
+    .map((line) => (/^(Zensho|CrossOver|Cross Over|THC|Sattva|Oracle|Longhouse)/i.test(line) ? `\n${line}` : `- ${line}`))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function formatResumeText(raw = '') {
+  const rawSource = normalizeExtractedText(raw);
+  const source = compactProfileText(raw);
+  if (!source) return '';
+
+  const email = rawSource.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || source.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || '';
+  const linkedin = rawSource.match(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[A-Za-z0-9._-]+\/?/i)?.[0] || source.match(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[A-Za-z0-9._-]+\/?/i)?.[0] || '';
+  const blog = rawSource.match(/(?:https?:\/\/)?[A-Za-z0-9.-]*substack\.com\/?/i)?.[0] || source.match(/(?:https?:\/\/)?[A-Za-z0-9.-]*substack\.com\/?/i)?.[0] || '';
+  const location = source.match(/\b(?:Tokyo|Bengaluru|Bangalore|Singapore|Seoul|Dubai|Mumbai|New Delhi|Chennai|Hyderabad|Pune|Sapporo),?\s+(?:Japan|India|Singapore|South Korea|UAE)?/i)?.[0] || '';
+  const nameMatch = source.match(/(?:^|\s)([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\s+(?:Executive Search|Contact|Top Skills|Summary)/);
+  const name = clean(nameMatch?.[1] || titleCaseFromSlug(linkedin.split('/in/')[1]?.split(/[/?#]/)[0] || ''));
+
+  const experienceHeading = /\bExperience\s+(?=(?:Zensho|CrossOver|Cross Over|THC|Sattva|Oracle|Longhouse)\b)/i;
+  const educationHeading = /\bEducation\s+(?=(?:Stoa|College|University|Bachelor|Master|MBA|Executive MBA)\b)/i;
+  const summary = extractBetween(source, /\bSummary\b/i, [experienceHeading, educationHeading]);
+  const skills = splitInlineList(extractBetween(source, /\bTop Skills\b/i, [/\bLanguages\b/i, /\bCertifications\b/i, /\bSummary\b/i, /\bExperience\b/i]));
+  const languages = splitInlineList(extractBetween(source, /\bLanguages\b/i, [/\bCertifications\b/i, /\bSummary\b/i, /\bExperience\b/i]));
+  const certifications = splitInlineList(extractBetween(source, /\bCertifications\b/i, [/\bSummary\b/i, experienceHeading, educationHeading]))
+    .filter((item) => /certif|credential|license|ccna|pmp|aws|cisco|google|microsoft|salesforce|scrum/i.test(item));
+  const experience = extractBetween(source, experienceHeading, [educationHeading]);
+  const education = extractBetween(source, educationHeading, []);
+
+  const hasSelectedSearchSection = /\b(selected|representative|assignments|searches delivered)\b/i.test(source);
+  const selectedSearches = hasSelectedSearchSection ? uniqueLines((source.match(/\b(?:Country Head|General Manager|Quantitative Researcher|Data Scientist|Finance Manager|Head of|Chief [A-Za-z ]+|Managing Director|Vice President|Director|Senior Director|Principal Architect|Chief Technology Officer|Chief Executive Officer|Chief Operating Officer|Chief Financial Officer|Chief Marketing Officer)[^-\n]*(?:-[^-]+){1,3}/g) || [])
+    .map((item) => item.replace(/\s+/g, ' ').replace(/\s+Page\s+\d+.*/i, '').trim()))
+    .slice(0, 18) : [];
+
+  const output = [];
+  output.push(name ? `Candidate Profile: ${name}` : 'Candidate Profile');
+
+  const contact = uniqueLines([
+    email && `Email: ${email}`,
+    linkedin && `LinkedIn: ${linkedin.startsWith('http') ? linkedin : `https://${linkedin}`}`,
+    blog && `Blog: ${blog.startsWith('http') ? blog : `https://${blog}`}`,
+    location && `Location: ${location}`
+  ]);
+  if (contact.length) output.push(`\nContact\n${contact.join('\n')}`);
+  if (summary) output.push(`\nSummary\n${truncateLines(summary, 1400)}`);
+  if (skills.length) output.push(`\nCore Skills\n${bulletList(skills, 10)}`);
+  if (languages.length) output.push(`\nLanguages\n${bulletList(languages, 8)}`);
+  if (certifications.length) output.push(`\nCertifications\n${bulletList(certifications, 8)}`);
+  if (selectedSearches.length) output.push(`\nSelected Search Assignments\n${bulletList(selectedSearches, 18)}`);
+  if (experience) output.push(`\nExperience\n${formatExperienceText(experience)}`);
+  if (education) output.push(`\nEducation\n${bulletList(splitInlineList(education), 8)}`);
+
+  const formatted = truncateLines(output.join('\n'), 8000);
+  return formatted.length > 80 ? formatted : truncateLines(source, 8000);
+}
+
+function formatJobDescriptionText(raw = '') {
+  const source = compactProfileText(raw);
+  if (!source) return '';
+  const normalized = source
+    .replace(/\b(About the role|Role summary|Responsibilities|Key Responsibilities|Requirements|Qualifications|Skills|Experience|KPIs|KRAs|Benefits|Location|Compensation)\b/gi, '\n\n$1\n')
+    .replace(/\s+[-•]\s+/g, '\n- ')
+    .replace(/\s+(?=\d+\.\s+)/g, '\n')
+    .trim();
+  return truncateLines(normalized, 8000);
+}
+
+function formatParsedDocument(text = '', file = {}) {
+  const kind = uploadKind(file);
+  if (kind === 'cv') return formatResumeText(text);
+  if (kind === 'job-description') return formatJobDescriptionText(text);
+  return truncateLines(normalizeExtractedText(text), 8000);
 }
 
 function readabilityScore(value = '') {
@@ -631,9 +795,10 @@ export default async function handler(request, response) {
         const detail = ocrUnavailable ? ` OCR could not complete: ${ocr.reason}.` : '';
         return response.status(422).json({ error: `The file uploaded, but readable text could not be extracted.${detail} Upload a clearer text-based PDF/DOCX/TXT, try a higher-quality scan, or paste the JD content manually.` });
       }
-      const stored = await storeUploadedFile(file, buffer, text);
-      await productEvent(uploadKind(file) === 'cv' ? 'cv_uploaded' : 'file_uploaded', { entityType: 'uploaded_file', entityId: stored.id, metadata: { kind: stored.kind, fileType: stored.fileType, fileSize: stored.fileSize, parsed: Boolean(text) } });
-      return response.json({ text, file: { name: clean(file?.name), type: clean(file?.type), size: Number(file?.size || 0), storage: stored }, confidence: parsingConfidence(text), readabilityScore: Number(readabilityScore(text).toFixed(2)), extractionMethod: method, ocrFallback: method === 'ocr', ocrPages: ocr?.pages || 0 });
+      const formattedText = formatParsedDocument(text, file);
+      const stored = await storeUploadedFile(file, buffer, formattedText);
+      await productEvent(uploadKind(file) === 'cv' ? 'cv_uploaded' : 'file_uploaded', { entityType: 'uploaded_file', entityId: stored.id, metadata: { kind: stored.kind, fileType: stored.fileType, fileSize: stored.fileSize, parsed: Boolean(formattedText), formatted: formattedText !== text } });
+      return response.json({ text: formattedText, rawTextPreview: truncateLines(text, 1200), file: { name: clean(file?.name), type: clean(file?.type), size: Number(file?.size || 0), storage: stored }, confidence: parsingConfidence(text), readabilityScore: Number(readabilityScore(text).toFixed(2)), extractionMethod: method, ocrFallback: method === 'ocr', ocrPages: ocr?.pages || 0 });
     }
     if (action === 'generate-job-description') {
       const session = requireSession(request, response);
