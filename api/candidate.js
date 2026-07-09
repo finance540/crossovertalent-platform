@@ -89,7 +89,8 @@ export default async function handler(request, response) {
     }
     if (request.method !== 'POST') return methodNotAllowed(response);
     if (!assertSameOrigin(request)) return forbidden(response);
-    const { action, email = '', password = '', token = '', name = '', linkedin = '', jobId = '', preferences = {}, resume = '', targetRole = '', skills = '', message = '' } = request.body || {};
+    const body = request.body || {};
+    const { action, email = '', password = '', token = '', name = '', linkedin = '', jobId = '', preferences = {}, resume = '', targetRole = '', skills = '', message = '' } = body;
     const normalizedEmail = clean(email).toLowerCase();
 
     if (action === 'resend-verification') {
@@ -171,8 +172,8 @@ export default async function handler(request, response) {
       const updated = {
         ...candidate,
         name: clean(name || candidate.name).slice(0, 120),
-        linkedin: clean(linkedin || candidate.linkedin).slice(0, 500),
-        resume: clean(resume || candidate.resume).slice(0, 10000),
+        linkedin: clean(Object.hasOwn(body, 'linkedin') ? linkedin : candidate.linkedin).slice(0, 500),
+        resume: clean(Object.hasOwn(body, 'resume') ? resume : candidate.resume).slice(0, 10000),
         preferences: {
           company: clean(preferences.company).slice(0, 160),
           currentCompensation: clean(preferences.currentCompensation).slice(0, 80),
