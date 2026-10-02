@@ -179,7 +179,9 @@ includes('app', /function marketplaceEmptyState/, 'marketplace empty states exis
 includes('app', /hasPublicFilters\(\)/, 'empty states distinguish filtered results from an empty marketplace');
 includes('app', /No open roles yet/, 'jobs empty state explains an empty board');
 includes('app', /No company profiles yet/, 'companies empty state explains an empty directory');
-includes('app', /Write the first review/, 'reviews empty state invites the first review');
+includes('app', /Post the first job/, 'jobs empty state invites the first job');
+includes('app', /Be the first to leave a review/, 'reviews empty state invites the first review');
+includes('app', /data-summary-tab/, 'marketplace counters link to their tabs');
 includes('app', /data-empty-action="clear-filters"|'clear-filters', 'Clear filters'/, 'filtered empty states offer clear filters');
 includes('app', /function clearPublicFilters/, 'clear filters resets marketplace filters');
 

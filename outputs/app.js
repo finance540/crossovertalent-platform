@@ -881,10 +881,10 @@ function publicMatches(item) {
 }
 
 const MARKETPLACE_EMPTY_STATES = {
-  jobs: { label: 'roles', icon: '▣', title: 'No open roles yet', copy: 'New impact roles are published here as approved employers post them. Join job alerts to hear about new roles first.', actions: [['job-alerts', 'Join job alerts', 'primary'], ['post-job', 'Post a job', 'subtle']] },
-  companies: { label: 'companies', icon: '◇', title: 'No company profiles yet', copy: 'Company profiles appear once employers publish roles or candidates share workplace reviews.', actions: [['post-job', 'Create employer workspace', 'primary'], ['add-review', 'Review a company', 'subtle']] },
-  reviews: { label: 'reviews', icon: '◎', title: 'No reviews yet', copy: 'Be the first to share an anonymous, verified workplace review and help candidates compare employers.', actions: [['add-review', 'Write the first review', 'primary']] },
-  salaries: { label: 'salary signals', icon: '¤', title: 'No salary signals yet', copy: 'Salary ranges are shown only as aggregates once enough signals exist, so no individual submission is exposed.', actions: [['add-salary', 'Add a salary signal', 'primary']] }
+  jobs: { label: 'roles', icon: '▣', title: 'No open roles yet', copy: 'New impact roles are published here as approved employers post them. Join job alerts to hear about new roles first.', actions: [['post-job', 'Post the first job', 'primary'], ['job-alerts', 'Get job alerts', 'subtle']] },
+  companies: { label: 'companies', icon: '◇', title: 'No company profiles yet', copy: 'Company profiles appear once employers publish roles or candidates share workplace reviews.', actions: [['post-job', 'Add your company', 'primary'], ['add-review', 'Review a company', 'subtle']] },
+  reviews: { label: 'reviews', icon: '◎', title: 'No reviews yet', copy: 'Be the first to share an anonymous, verified workplace review and help candidates compare employers.', actions: [['add-review', 'Be the first to leave a review', 'primary']] },
+  salaries: { label: 'salary signals', icon: '¤', title: 'No salary signals yet', copy: 'Salary ranges are shown only as aggregates once enough signals exist, so no individual submission is exposed.', actions: [['add-salary', 'Share the first salary signal', 'primary']] }
 };
 
 function hasPublicFilters() {
@@ -938,13 +938,8 @@ function updatePublicFilterOptions() {
 
 function renderMarketSummary() {
   const companies = marketplaceCompanies();
-  const ratings = state.publicReviews.map((review) => Number(review.rating || 0)).filter(Boolean);
-  const average = ratings.length ? (ratings.reduce((sum, value) => sum + value, 0) / ratings.length).toFixed(1) : '—';
-  $('#market-summary').innerHTML = `
-    <article><strong>${state.publicJobs.length}</strong><span>Live jobs</span></article>
-    <article><strong>${companies.length}</strong><span>Companies</span></article>
-    <article><strong>${state.publicReviews.length}</strong><span>Reviews</span></article>
-    <article><strong>${state.publicSalarySignals.length}</strong><span>Salary signals</span></article>`;
+  const counters = [['jobs', state.publicJobs.length, 'Live jobs'], ['companies', companies.length, 'Companies'], ['reviews', state.publicReviews.length, 'Reviews'], ['salaries', state.publicSalarySignals.length, 'Salary signals']];
+  $('#market-summary').innerHTML = counters.map(([tab, count, label]) => `<button type="button" class="${state.publicTab === tab ? 'active' : ''}" data-summary-tab="${tab}" aria-pressed="${state.publicTab === tab}"><strong>${count}</strong><span>${label}</span></button>`).join('');
 }
 
 function renderPublicJobsList() {
@@ -1540,6 +1535,13 @@ $('#employer-login-button').addEventListener('click', () => openAuth('login'));
 $('#add-review-button').addEventListener('click', startReview);
 $('#add-salary-button').addEventListener('click', startSalarySignal);
 $('#join-job-alerts')?.addEventListener('click', openJobAlerts);
+$('#market-summary').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-summary-tab]');
+  if (!button) return;
+  state.publicTab = button.dataset.summaryTab;
+  resetPage(pageKeyForPublic());
+  renderMarketplace();
+});
 $('#public-market').addEventListener('click', (event) => {
   const button = event.target.closest('[data-empty-action]');
   if (button) runEmptyStateAction(button.dataset.emptyAction);
