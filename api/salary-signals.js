@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { IMPACT_SECTORS, assertSameOrigin, auditLog, deleteRecord, ensureStorage, forbidden, listRecords, methodNotAllowed, rateLimit, readRecord, readSession, serverError, setSecurityHeaders, stableHash, tooManyRequests, writeRecord } from './_lib.js';
+import { IMPACT_SECTORS, assertSameOrigin, auditLog, deleteRecord, ensureStorage, forbidden, isApproved, listRecords, methodNotAllowed, rateLimit, readRecord, readSession, serverError, setSecurityHeaders, stableHash, tooManyRequests, writeRecord } from './_lib.js';
 
 const LEVELS = ['Associate', 'Manager', 'Senior Manager', 'Director', 'Executive'];
 
@@ -22,7 +22,7 @@ export default async function handler(request, response) {
     setSecurityHeaders(response);
     ensureStorage();
     if (request.method === 'GET') {
-      const signals = (await listRecords('salary-signals/')).filter((item) => item.recordType === 'salary_signal').sort((a, b) => b.created_at.localeCompare(a.created_at));
+      const signals = (await listRecords('salary-signals/')).filter((item) => item.recordType === 'salary_signal' && isApproved(item)).sort((a, b) => b.created_at.localeCompare(a.created_at));
       const groups = new Map();
       signals.forEach((signal) => {
         const key = groupKey(signal);

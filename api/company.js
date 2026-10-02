@@ -1,4 +1,4 @@
-import { IMPACT_SECTORS, allowStorageFallback, auditLog, assertSameOrigin, configuredSupabaseUrl, employerStatus, ensureStorage, forbidden, isProductionSmokeRecord, isPublicJob, listRecords, methodNotAllowed, productEvent, readRecord, requireApprovedEmployerSession, serverError, setSecurityHeaders, uploadPrivateFile, writeRecord } from './_lib.js';
+import { IMPACT_SECTORS, allowStorageFallback, auditLog, assertSameOrigin, configuredSupabaseUrl, employerStatus, ensureStorage, forbidden, isApproved, isProductionSmokeRecord, isPublicJob, listRecords, methodNotAllowed, productEvent, readRecord, requireApprovedEmployerSession, serverError, setSecurityHeaders, uploadPrivateFile, writeRecord } from './_lib.js';
 import { randomUUID } from 'node:crypto';
 
 const MAX_LOGO_BYTES = 750_000;
@@ -63,7 +63,7 @@ async function publicCompanies() {
   const jobsByCompany = new Map();
   records.forEach((record) => {
     if (!record.companyId || hiddenCompanyIds.has(record.companyId)) return;
-    if (record.recordType === 'company_profile' && clean(record.company) && !isProductionSmokeRecord(record)) profiles.set(record.companyId, record);
+    if (record.recordType === 'company_profile' && clean(record.company) && isApproved(record) && !isProductionSmokeRecord(record)) profiles.set(record.companyId, record);
     if (isPublicJob(record)) jobsByCompany.set(record.companyId, [...(jobsByCompany.get(record.companyId) || []), record]);
   });
   const companyIds = new Set([...profiles.keys(), ...jobsByCompany.keys()]);
@@ -139,6 +139,7 @@ export default async function handler(request, response) {
     if (company.length > 120 || website.length > 300 || location.length > 120 || description.length > 2000) return response.status(400).json({ error: 'One or more fields are too long' });
     const nextLogo = logo === undefined ? existing?.logo || null : await cleanLogo(logo, session);
     const profile = {
+      ...existing,
       recordType: 'company_profile',
       companyId: session.companyId,
       ownerEmail: session.email,

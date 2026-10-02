@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { IMPACT_SECTORS, appUrl, assertSameOrigin, auditLog, deleteRecord, ensureStorage, forbidden, listRecords, methodNotAllowed, rateLimit, readRecord, readSession, sendEmail, serverError, setSecurityHeaders, stableHash, tooManyRequests, writeRecord } from './_lib.js';
+import { IMPACT_SECTORS, appUrl, assertSameOrigin, auditLog, deleteRecord, ensureStorage, forbidden, isApproved, listRecords, methodNotAllowed, rateLimit, readRecord, readSession, sendEmail, serverError, setSecurityHeaders, stableHash, tooManyRequests, writeRecord } from './_lib.js';
 
 function clean(value = '') {
   return String(value).trim();
@@ -20,7 +20,7 @@ export default async function handler(request, response) {
       const session = readSession(request);
       const all = (await listRecords('reviews/')).filter((item) => item.recordType === 'review');
       const reviews = all
-        .filter((item) => request.query.mine === '1' && session ? item.ownerHash === stableHash(session.email) : !item.hidden)
+        .filter((item) => request.query.mine === '1' && session ? item.ownerHash === stableHash(session.email) : !item.hidden && isApproved(item))
         .sort((a, b) => b.created_at.localeCompare(a.created_at))
         .map((item) => request.query.mine === '1' ? item : (({ ownerHash, ...publicReview }) => publicReview)(item));
       return response.json({ reviews });

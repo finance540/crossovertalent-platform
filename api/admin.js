@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { EMPLOYER_STATUSES, allowAdminSelfRegistration, appUrl, assertSameOrigin, auditLog, clearSessionCookie, createSession, employerStatus, ensureStorage, forbidden, hashPassword, listRecords, methodNotAllowed, passwordResetEmail, productEvent, rateLimit, readRecord, readSession, sendEmail, serverError, setSecurityHeaders, setSessionCookie, stableHash, tooManyRequests, verificationEmail, verificationLinkPayload, verifyPassword, writeRecord } from './_lib.js';
+import { EMPLOYER_STATUSES, IMPACT_SECTORS, MODERATION_STATUSES, allowAdminSelfRegistration, appUrl, assertSameOrigin, auditLog, clearSessionCookie, createSession, employerStatus, ensureStorage, forbidden, hashPassword, listRecords, methodNotAllowed, moderationStatus, passwordResetEmail, productEvent, rateLimit, readRecord, readSession, sendEmail, serverError, setSecurityHeaders, setSessionCookie, stableHash, tooManyRequests, verificationEmail, verificationLinkPayload, verifyPassword, writeRecord } from './_lib.js';
 
 function clean(value = '') {
   return String(value).trim();
@@ -89,6 +89,138 @@ async function adminMetrics() {
       checkedAt: new Date().toISOString()
     }
   };
+}
+
+const CONTENT_TYPES = ['job', 'company', 'review', 'salary'];
+const ADMIN_JOB_STATUSES = ['active', 'closed'];
+const JOB_TYPES = ['Full-time', 'Part-time', 'Contract', 'Internship'];
+const LEVELS = ['Associate', 'Manager', 'Senior Manager', 'Director', 'Executive'];
+
+class ContentError extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
+
+function required(fields, names) {
+  const missing = names.filter((name) => !clean(fields[name]));
+  if (missing.length) throw new ContentError(`Complete the required fields: ${missing.join(', ')}`);
+}
+
+function maxLength(fields, limits) {
+  const tooLong = Object.entries(limits).filter(([name, limit]) => clean(fields[name]).length > limit).map(([name]) => name);
+  if (tooLong.length) throw new ContentError(`These fields are too long: ${tooLong.join(', ')}`);
+}
+
+function validSector(value) {
+  if (!IMPACT_SECTORS.includes(clean(value))) throw new ContentError('Choose a valid focus sector');
+  return clean(value);
+}
+
+function validUrl(value) {
+  const url = clean(value);
+  if (url && !/^https?:\/\//i.test(url)) throw new ContentError('URLs must start with http:// or https://');
+  return url;
+}
+
+function sectorList(value) {
+  const sectors = (Array.isArray(value) ? value : String(value || '').split(',')).map(clean).filter(Boolean);
+  sectors.forEach(validSector);
+  return [...new Set(sectors)];
+}
+
+async function findJob(id) {
+  return (await listRecords('companies/')).find((item) => item.recordType === 'job' && item.id === id) || null;
+}
+
+async function contentLocation(type, id) {
+  if (type === 'company') return { path: `companies/${id}/profile.json`, record: await readRecord(`companies/${id}/profile.json`) };
+  if (type === 'review') return { path: `reviews/${id}.json`, record: await readRecord(`reviews/${id}.json`) };
+  if (type === 'salary') return { path: `salary-signals/${id}.json`, record: await readRecord(`salary-signals/${id}.json`) };
+  const job = await findJob(id);
+  return { path: job ? `companies/${job.companyId}/jobs/${job.id}.json` : '', record: job };
+}
+
+async function companyName(companyId) {
+  const profile = await readRecord(`companies/${companyId}/profile.json`);
+  if (profile?.company) return profile.company;
+  const account = (await listRecords('accounts/')).find((item) => item.companyId === companyId);
+  return account?.company || '';
+}
+
+async function buildContent(type, fields, existing, admin) {
+  const now = new Date().toISOString();
+  const base = { ...existing, updated_at: now, updatedBy: admin.email };
+  if (!existing) Object.assign(base, { created_at: now, createdBy: admin.email, source: 'admin' });
+  if (type === 'company') {
+    required(fields, ['company', 'mission']);
+    maxLength(fields, { company: 120, website: 300, location: 120, mission: 600, description: 2000 });
+    const sectors = sectorList(fields.sectors);
+    return { ...base, recordType: 'company_profile', companyId: existing?.companyId || `co-${randomUUID()}`, company: clean(fields.company), sector: sectors[0] || '', sectors, website: validUrl(fields.website), location: clean(fields.location), mission: clean(fields.mission), description: clean(fields.description), logo: existing?.logo || null };
+  }
+  if (type === 'job') {
+    if (existing) fields = { ...fields, companyId: existing.companyId };
+    required(fields, ['companyId', 'title', 'department', 'location', 'type', 'sector', 'experience', 'description']);
+    maxLength(fields, { title: 160, department: 120, location: 120, salary: 120, impactArea: 200, description: 8000 });
+    if (!JOB_TYPES.includes(clean(fields.type))) throw new ContentError('Choose a valid work type');
+    if (!LEVELS.includes(clean(fields.experience))) throw new ContentError('Choose a valid experience level');
+    const status = clean(fields.status) || existing?.status || 'active';
+    if (!ADMIN_JOB_STATUSES.includes(status)) throw new ContentError('Choose a valid job status');
+    const companyId = clean(fields.companyId);
+    const company = await companyName(companyId);
+    if (!company) throw new ContentError('Choose an existing company for this job');
+    return { ...base, recordType: 'job', schemaVersion: 2, id: existing?.id || randomUUID(), companyId, company, title: clean(fields.title), department: clean(fields.department), location: clean(fields.location), type: clean(fields.type), salary: clean(fields.salary), sector: validSector(fields.sector), experience: clean(fields.experience), impactArea: clean(fields.impactArea), description: clean(fields.description), status };
+  }
+  if (type === 'review') {
+    required(fields, ['company', 'sector', 'role', 'location', 'rating', 'headline', 'pros', 'cons']);
+    maxLength(fields, { company: 120, companyUrl: 500, role: 120, location: 120, salary: 120, headline: 180, pros: 1200, cons: 1200, advice: 1200 });
+    const rating = Number(fields.rating);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new ContentError('Choose a rating from 1 to 5');
+    return { ...base, recordType: 'review', id: existing?.id || randomUUID(), company: clean(fields.company), companyUrl: validUrl(fields.companyUrl), sector: validSector(fields.sector), role: clean(fields.role), location: clean(fields.location), rating, salary: clean(fields.salary), headline: clean(fields.headline), pros: clean(fields.pros), cons: clean(fields.cons), advice: clean(fields.advice), reviewer: existing?.reviewer || { displayMode: 'anonymous', label: 'Crossover Talent editorial', linkedin: '', verifiedDomain: '' }, ownerHash: existing?.ownerHash || stableHash(admin.email) };
+  }
+  required(fields, ['company', 'role', 'location', 'level', 'sector', 'currency', 'salaryMin', 'salaryMax']);
+  maxLength(fields, { company: 120, role: 120, location: 120, currency: 8, workType: 40, note: 500 });
+  if (!LEVELS.includes(clean(fields.level))) throw new ContentError('Choose a valid level');
+  const salaryMin = Number(fields.salaryMin);
+  const salaryMax = Number(fields.salaryMax);
+  if (!Number.isFinite(salaryMin) || !Number.isFinite(salaryMax) || salaryMin <= 0 || salaryMax < salaryMin) throw new ContentError('Enter a valid salary range');
+  return { ...base, recordType: 'salary_signal', id: existing?.id || randomUUID(), company: clean(fields.company), role: clean(fields.role), location: clean(fields.location), level: clean(fields.level), sector: validSector(fields.sector), currency: clean(fields.currency).toUpperCase(), salaryMin, salaryMax, workType: clean(fields.workType), note: clean(fields.note), submittedByRole: existing?.submittedByRole || 'admin', ownerHash: existing?.ownerHash || stableHash(admin.email) };
+}
+
+function recordId(type, record) {
+  return type === 'company' ? record.companyId : record.id;
+}
+
+function recordPath(type, record) {
+  if (type === 'company') return `companies/${record.companyId}/profile.json`;
+  if (type === 'job') return `companies/${record.companyId}/jobs/${record.id}.json`;
+  if (type === 'review') return `reviews/${record.id}.json`;
+  return `salary-signals/${record.id}.json`;
+}
+
+async function saveContent(admin, { type, id = '', fields = {}, moderation_status: requestedStatus = '' }) {
+  if (!CONTENT_TYPES.includes(type)) throw new ContentError('Choose a valid content type');
+  if (requestedStatus && !MODERATION_STATUSES.includes(requestedStatus)) throw new ContentError('Choose approved, pending, or rejected');
+  const existing = id ? (await contentLocation(type, clean(id))).record : null;
+  if (id && !existing) throw new ContentError('Content not found', 404);
+  const record = await buildContent(type, fields || {}, existing, admin);
+  record.moderation_status = requestedStatus || (existing ? moderationStatus(existing) : 'pending');
+  await writeRecord(recordPath(type, record), record, true);
+  await auditLog(existing ? 'admin.content_updated' : 'admin.content_created', { actorEmail: admin.email, entityType: type, entityId: recordId(type, record), metadata: { moderation_status: record.moderation_status } });
+  return record;
+}
+
+async function moderateContent(admin, { type, id = '', moderation_status: status = '' }) {
+  if (!CONTENT_TYPES.includes(type)) throw new ContentError('Choose a valid content type');
+  if (!MODERATION_STATUSES.includes(status)) throw new ContentError('Choose approved, pending, or rejected');
+  const { path, record } = await contentLocation(type, clean(id));
+  if (!record) throw new ContentError('Content not found', 404);
+  const updated = { ...record, moderation_status: status, moderatedBy: admin.email, moderated_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+  await writeRecord(path, updated, true);
+  await auditLog('admin.content_moderated', { actorEmail: admin.email, entityType: type, entityId: clean(id), metadata: { moderation_status: status } });
+  await productEvent('content_moderated', { actorEmail: admin.email, entityType: type, entityId: clean(id), metadata: { moderation_status: status } });
+  return updated;
 }
 
 async function currentAdmin(request, response) {
@@ -215,6 +347,15 @@ export default async function handler(request, response) {
         await auditLog('admin.job_moderated', { actorEmail: admin.email, entityType: 'job', entityId: id, metadata: { status } });
         await productEvent('job_moderated', { actorEmail: admin.email, entityType: 'job', entityId: id, metadata: { status, companyId: job.companyId } });
         return response.json({ ok: true });
+      }
+      if (action === 'content-save' || action === 'content-moderate') {
+        try {
+          const record = action === 'content-save' ? await saveContent(admin, request.body) : await moderateContent(admin, request.body);
+          return response.json({ ok: true, record });
+        } catch (error) {
+          if (error instanceof ContentError) return response.status(error.status).json({ error: error.message });
+          throw error;
+        }
       }
       return response.status(400).json({ error: 'Choose a valid admin moderation action' });
     }
