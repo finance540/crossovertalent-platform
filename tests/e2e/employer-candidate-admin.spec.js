@@ -301,7 +301,7 @@ test.describe.serial('Crossover Talent E2E release candidate workflows', () => {
     await expect(page.getByText('Apply now')).toBeVisible();
     await page.getByRole('button', { name: '×' }).click();
     await page.getByPlaceholder('Search jobs, companies, or locations').fill(`E2E Climate Employer ${stamp}`);
-    await page.getByRole('button', { name: 'Companies' }).click();
+    await page.getByRole('button', { name: 'Companies', exact: true }).click();
     await expect(page.locator('#public-market').getByText(`E2E Climate Employer ${stamp}`)).toBeVisible();
   });
 
