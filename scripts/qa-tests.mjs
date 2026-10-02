@@ -16,6 +16,7 @@ const files = {
   reviews: await readFile('api/reviews.js', 'utf8'),
   salaries: await readFile('api/salary-signals.js', 'utf8')
 };
+files.payments = await readFile('api/payments.js', 'utf8');
 files.vercel = await readFile('vercel.json', 'utf8');
 files.seed = await readFile('scripts/staging-seed.mjs', 'utf8');
 
@@ -129,6 +130,11 @@ includes('assist', /role === 'admin'/, 'assistant admin guidance is role-aware')
 includes('jobs', /request\.method === 'POST'/, 'job posting route exists');
 includes('jobs', /request\.method === 'PATCH'/, 'job edit and publish route exists');
 includes('jobs', /request\.method === 'DELETE'/, 'job delete route exists');
+includes('jobs', /payment_status/, 'jobs store payment status');
+includes('jobs', /checkoutUrl/, 'job publishing can require checkout');
+includes('payments', /checkout\/sessions/, 'Stripe checkout session creation exists');
+includes('payments', /checkout\.session\.completed/, 'Stripe checkout webhook exists');
+includes('payments', /STRIPE_WEBHOOK_SECRET/, 'Stripe webhook signature secret is configured');
 includes('app', /data-job-toggle/, 'publish/unpublish control exists');
 includes('app', /data-job-share/, 'copy job board link control exists');
 

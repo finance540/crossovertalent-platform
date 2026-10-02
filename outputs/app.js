@@ -810,7 +810,11 @@ async function shareJob(id) {
 
 async function updateJob(id, status) {
   try {
-    await api('/api/jobs', { method: 'PATCH', body: JSON.stringify({ id, status }) });
+    const result = await api('/api/jobs', { method: 'PATCH', body: JSON.stringify({ id, status }) });
+    if (result.checkoutUrl) {
+      window.location.assign(result.checkoutUrl);
+      return;
+    }
     await loadDashboard();
     toast(status === 'active' ? 'Job published' : 'Job closed');
   } catch (error) { toast(error.message, true); }
@@ -1562,7 +1566,11 @@ $('#job-form').addEventListener('submit', async (event) => {
   try {
     const editing = Boolean(data.id);
     if (!editing) data.status = event.submitter?.value === 'draft' ? 'draft' : 'active';
-    await api('/api/jobs', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(data) });
+    const result = await api('/api/jobs', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(data) });
+    if (result.checkoutUrl) {
+      window.location.assign(result.checkoutUrl);
+      return;
+    }
     form.reset();
     $('#job-dialog').close();
     state.view = 'jobs';
