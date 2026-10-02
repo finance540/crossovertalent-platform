@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { IMPACT_SECTORS, assertSameOrigin, deleteRecord, ensureStorage, forbidden, hiddenEmployerCompanyIds, isJobExpired, isPublicJob, jobPublishedAt, listRecords, methodNotAllowed, productEvent, rateLimit, readRecord, requireApprovedEmployerSession, resolveJobExpiry, serverError, setSecurityHeaders, tooManyRequests, writeRecord } from './_lib.js';
+import { createJobCheckoutSession } from './payments.js';
 
 export default async function handler(request, response) {
   try {
@@ -31,11 +32,21 @@ export default async function handler(request, response) {
       const expiry = resolveJobExpiry(expiresAt);
       if (expiry.error) return response.status(400).json({ error: expiry.error });
       const now = new Date().toISOString();
-      const job = { recordType: 'job', schemaVersion: 2, id: randomUUID(), companyId: session.companyId, company: session.company, title: title.trim(), department: department.trim(), location: location.trim(), type: type.trim(), salary: salary.trim(), sector: sector.trim(), experience: experience.trim(), impactArea: impactArea.trim(), description: description.trim(), sourceAttachment, sourceText: sourceText.trim(), aiInputs, status, expires_at: expiry.expires_at, published_at: status === 'active' ? now : '', created_at: now };
+      const job = { recordType: 'job', schemaVersion: 2, id: randomUUID(), companyId: session.companyId, company: session.company, title: title.trim(), department: department.trim(), location: location.trim(), type: type.trim(), salary: salary.trim(), sector: sector.trim(), experience: experience.trim(), impactArea: impactArea.trim(), description: description.trim(), sourceAttachment, sourceText: sourceText.trim(), aiInputs, status: status === 'active' ? 'draft' : status, payment_status: 'unpaid', stripe_checkout_session_id: '', stripe_payment_id: '', expires_at: expiry.expires_at, published_at: '', created_at: now };
       await writeRecord(`${jobPrefix}${job.id}.json`, job);
       await productEvent('job_posted', { actorEmail: session.email, entityType: 'job', entityId: job.id, metadata: { companyId: session.companyId, sector: job.sector, location: job.location, status: job.status } });
-      if (status === 'active') await productEvent('job_published', { actorEmail: session.email, entityType: 'job', entityId: job.id, metadata: { companyId: session.companyId, sector: job.sector, location: job.location } });
-      return response.status(201).json({ job });
+      if (status === 'active' && process.env.STRIPE_SECRET_KEY) {
+        const checkout = await createJobCheckoutSession(job, session);
+        const pending = { ...job, payment_status: 'pending', stripe_checkout_session_id: checkout.id };
+        await writeRecord(`${jobPrefix}${job.id}.json`, pending, true);
+        return response.status(201).json({ job: pending, checkoutUrl: checkout.url, paymentRequired: true });
+      }
+      const published = status === 'active' ? { ...job, status: 'active', payment_status: 'paid', published_at: now } : job;
+      if (status === 'active') {
+        await writeRecord(`${jobPrefix}${job.id}.json`, published, true);
+        await productEvent('job_published', { actorEmail: session.email, entityType: 'job', entityId: job.id, metadata: { companyId: session.companyId, sector: job.sector, location: job.location } });
+      }
+      return response.status(201).json({ job: published });
     }
     if (request.method === 'PATCH') {
       const { id, status, title, department, location, type, salary = '', sector = 'Climate', experience = 'Manager', impactArea = '', description, sourceAttachment = null, sourceText = '', aiInputs = null, expiresAt = '' } = request.body || {};
@@ -44,6 +55,12 @@ export default async function handler(request, response) {
       if (!job) return response.status(404).json({ error: 'Job not found' });
       if (status) {
         if (!['draft', 'active', 'closed'].includes(status)) return response.status(400).json({ error: 'Invalid job status' });
+        if (status === 'active' && process.env.STRIPE_SECRET_KEY && job.payment_status !== 'paid') {
+          const checkout = await createJobCheckoutSession(job, session);
+          const pending = { ...job, status: 'draft', payment_status: 'pending', stripe_checkout_session_id: checkout.id, updated_at: new Date().toISOString() };
+          await writeRecord(pathname, pending, true);
+          return response.json({ job: pending, checkoutUrl: checkout.url, paymentRequired: true });
+        }
         const now = new Date().toISOString();
         const publishing = status === 'active' ? { published_at: job.status === 'active' && job.published_at ? job.published_at : now, expires_at: isJobExpired(job) ? '' : job.expires_at || '' } : {};
         await writeRecord(pathname, { ...job, status, ...publishing, updated_at: now }, true);
