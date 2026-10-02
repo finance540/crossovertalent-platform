@@ -189,6 +189,13 @@ includes('vercel', /"source": "\/api\/companies", "destination": "\/api\/company
 includes('company', /request\.query\.route === 'companies'/, 'public companies API is served before employer auth');
 includes('company', /missionSummary/, 'companies API returns mission summaries');
 includes('lib', /export function isPublicJob/, 'public job visibility is shared between APIs');
+includes('lib', /export const MODERATION_STATUSES = \['approved', 'pending', 'rejected'\]/, 'content supports approved, pending and rejected moderation');
+includes('lib', /isApproved\(job\)/, 'public jobs require approved moderation');
+includes('company', /isApproved\(record\)/, 'public companies require approved moderation');
+includes('reviews', /!item\.hidden && isApproved\(item\)/, 'public reviews require approved moderation');
+includes('salaries', /isApproved\(item\)/, 'public salary signals require approved moderation');
+includes('admin', /action === 'content-save' \|\| action === 'content-moderate'/, 'admins can create, edit and moderate marketplace content');
+includes('app', /function adminContentPanel/, 'admin dashboard has a marketplace content section');
 includes('app', /data-empty-action="clear-filters"|'clear-filters', 'Clear filters'/, 'filtered empty states offer clear filters');
 includes('app', /function clearPublicFilters/, 'clear filters resets marketplace filters');
 

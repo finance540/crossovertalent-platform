@@ -1,6 +1,6 @@
 const LIVE_ORIGIN = 'https://build-me-a-simple-website-where.vercel.app';
 const MAX_UPLOAD_BYTES = 3_000_000;
-const state = { user: null, candidate: null, admin: null, adminData: null, companyProfile: null, candidateApplications: [], myReviews: [], jobs: [], applications: [], publicJobs: [], publicCompanies: null, publicReviews: [], publicSalarySignals: [], salaryAggregates: [], notifications: [], publicTab: 'jobs', view: 'overview', candidateView: 'overview', authMode: 'login', candidateAuthMode: 'login', adminAuthMode: 'login', search: '', candidateSearch: '', publicSearch: '', sector: '', location: '', level: '', workType: '', functionFilter: '', industry: '', pages: { jobs: 1, applications: 1, publicJobs: 1, publicReviews: 1, publicSalaries: 1, admin: 1 }, pageSize: 10 };
+const state = { user: null, candidate: null, admin: null, adminData: null, companyProfile: null, candidateApplications: [], myReviews: [], jobs: [], applications: [], publicJobs: [], publicCompanies: null, publicReviews: [], publicSalarySignals: [], salaryAggregates: [], notifications: [], publicTab: 'jobs', adminContentType: 'job', view: 'overview', candidateView: 'overview', authMode: 'login', candidateAuthMode: 'login', adminAuthMode: 'login', search: '', candidateSearch: '', publicSearch: '', sector: '', location: '', level: '', workType: '', functionFilter: '', industry: '', pages: { jobs: 1, applications: 1, publicJobs: 1, publicReviews: 1, publicSalaries: 1, admin: 1 }, pageSize: 10 };
 let liveSyncTimer;
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -583,7 +583,7 @@ function renderCompanyProfile() {
   const logoUrl = profile.logo?.publicUrl || profile.logo?.dataUrl || '';
   const logo = logoUrl ? `<div class="logo-preview"><img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(profile.company)} logo" /><button class="mini-button" id="remove-company-logo">Remove logo</button></div>` : '<p class="muted">No logo uploaded yet.</p>';
   $('#main-content').innerHTML = `<section class="page-heading"><div><p class="eyebrow">Company profile</p><h1>Edit public company details.</h1><p class="muted">This profile powers company cards and candidate trust signals.</p></div></section>
-  <section class="panel candidate-form-panel"><div class="form-grid"><label>Company name<input id="company-name-input" value="${escapeHtml(profile.company || state.user.company || '')}" /></label><label>Website<input id="company-website-input" placeholder="https://example.org" value="${escapeHtml(profile.website || '')}" /></label><label>Focus sector<select id="company-sector-input"><option value="">Select sector</option>${['Climate', 'Impact Investment', 'Public Healthcare', 'Agriculture', 'Water', 'Education', 'Clean Energy', 'Philanthropic Foundation', 'Circular Economy', 'CSR', 'ESG Consulting'].map((sector) => `<option ${profile.sector === sector ? 'selected' : ''}>${sector}</option>`).join('')}</select></label><label>Location<input id="company-location-input" value="${escapeHtml(profile.location || '')}" /></label><label class="span-2">Description<textarea id="company-description-input" rows="5">${escapeHtml(profile.description || '')}</textarea></label></div><div class="ai-box"><strong>Company logo</strong>${logo}<div class="inline-actions"><label class="upload-button">Upload logo<input id="company-logo-input" type="file" accept=".png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml" /></label></div><p class="muted" id="company-logo-status">PNG, JPG, WEBP, or SVG under 750 KB.</p></div><div class="dialog-actions"><button class="button primary" id="save-company-profile">Save company profile</button></div></section>`;
+  <section class="panel candidate-form-panel"><div class="form-grid"><label>Company name<input id="company-name-input" value="${escapeHtml(profile.company || state.user.company || '')}" /></label><label>Website<input id="company-website-input" placeholder="https://example.org" value="${escapeHtml(profile.website || '')}" /></label><label>Focus sector<select id="company-sector-input"><option value="">Select sector</option>${IMPACT_SECTOR_OPTIONS.map((sector) => `<option ${profile.sector === sector ? 'selected' : ''}>${sector}</option>`).join('')}</select></label><label>Location<input id="company-location-input" value="${escapeHtml(profile.location || '')}" /></label><label class="span-2">Description<textarea id="company-description-input" rows="5">${escapeHtml(profile.description || '')}</textarea></label></div><div class="ai-box"><strong>Company logo</strong>${logo}<div class="inline-actions"><label class="upload-button">Upload logo<input id="company-logo-input" type="file" accept=".png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml" /></label></div><p class="muted" id="company-logo-status">PNG, JPG, WEBP, or SVG under 750 KB.</p></div><div class="dialog-actions"><button class="button primary" id="save-company-profile">Save company profile</button></div></section>`;
   $('#save-company-profile').addEventListener('click', () => saveCompanyProfile());
   $('#company-logo-input').addEventListener('change', (event) => saveCompanyProfile(event.target.files[0]));
   $('#remove-company-logo')?.addEventListener('click', () => saveCompanyProfile(null, true));
@@ -1292,12 +1292,173 @@ function renderAdminDashboard() {
   });
   const employersForReview = (data.employers || []).filter((user) => user.role === 'employer');
   $('#admin-content').insertAdjacentHTML('beforeend', `<section class="panel"><div class="panel-header"><div><h2>Employer approval queue</h2><p>New employers default to pending review. Approval cannot be self-assigned and is enforced by employer APIs.</p></div></div>${employersForReview.length ? `<div class="table-wrap"><table><thead><tr><th>Employer</th><th>Status</th><th>Reviewed</th><th>Notes</th><th>Actions</th></tr></thead><tbody>${employersForReview.map((user) => `<tr><td>${escapeHtml(user.company || user.name)}<br><small>${escapeHtml(user.email)}</small></td><td><span class="status ${escapeHtml(user.employer_status || 'approved')}">${escapeHtml(employerStatusLabel(user.employer_status))}</span>${user.rejection_reason ? `<br><small>${escapeHtml(user.rejection_reason)}</small>` : ''}</td><td>${user.reviewed_at ? `${escapeHtml(dateLabel(user.reviewed_at))}<br><small>${escapeHtml(user.reviewed_by)}</small>` : 'Not reviewed'}</td><td>${escapeHtml(user.company_validation_notes || '—')}</td><td><div class="row-actions"><button class="mini-button" data-employer-review="${escapeHtml(user.email)}" data-employer-status="approved">Approve</button><button class="mini-button" data-employer-review="${escapeHtml(user.email)}" data-employer-status="rejected">Reject</button><button class="mini-button" data-employer-review="${escapeHtml(user.email)}" data-employer-status="suspended">Suspend</button></div></td></tr>`).join('')}</tbody></table></div>` : emptyState('✓', 'No employers to review', 'Employer registrations will appear here after signup.')}</section>`);
+  $('#admin-content .page-heading').insertAdjacentHTML('afterend', adminContentPanel(data, query));
+  $$('[data-admin-content-tab]').forEach((button) => button.addEventListener('click', () => { state.adminContentType = button.dataset.adminContentTab; renderAdminDashboard(); }));
+  $('[data-admin-content-new]').addEventListener('click', () => openAdminContentDialog());
+  $$('[data-admin-content-edit]').forEach((button) => button.addEventListener('click', () => openAdminContentDialog(button.dataset.adminContentEdit)));
+  $$('[data-admin-content-moderate]').forEach((button) => button.addEventListener('click', () => adminPatch({ action: 'content-moderate', type: state.adminContentType, id: button.dataset.adminContentModerate, moderation_status: button.dataset.moderationStatus })));
   bindPagination($('#admin-content'));
   $$('[data-admin-user]').forEach((button) => button.addEventListener('click', () => adminPatch({ action: 'user-status', email: button.dataset.adminUser, role: button.dataset.adminRole, disabled: button.dataset.adminDisabled === 'true' })));
   $$('[data-admin-job]').forEach((button) => button.addEventListener('click', () => adminPatch({ action: 'job-moderation', id: button.dataset.adminJob, status: button.dataset.adminJobStatus })));
   $$('[data-admin-review]').forEach((button) => button.addEventListener('click', () => adminPatch({ action: 'review-moderation', id: button.dataset.adminReview, hidden: button.dataset.adminHidden === 'true' })));
   $$('[data-support-ticket]').forEach((button) => button.addEventListener('click', () => updateSupportTicket(button.dataset.supportTicket, button.dataset.supportStatus)));
   $$('[data-employer-review]').forEach((button) => button.addEventListener('click', () => reviewEmployer(button.dataset.employerReview, button.dataset.employerStatus)));
+}
+
+const IMPACT_SECTOR_OPTIONS = ['Climate', 'Impact Investment', 'Public Healthcare', 'Agriculture', 'Water', 'Education', 'Clean Energy', 'Philanthropic Foundation', 'Circular Economy', 'CSR', 'ESG Consulting'];
+const LEVEL_OPTIONS = ['Associate', 'Manager', 'Senior Manager', 'Director', 'Executive'];
+const MODERATION_LABELS = { approved: 'Approved', pending: 'Pending', rejected: 'Rejected' };
+
+const ADMIN_CONTENT = {
+  job: {
+    label: 'Job',
+    plural: 'Jobs',
+    records: (data) => data.jobs || [],
+    id: (item) => item.id,
+    title: (item) => item.title,
+    detail: (item) => `${item.company} · ${item.location} · ${item.status === 'active' ? 'Published' : 'Closed'}`,
+    isPublic: (item) => item.status === 'active' && moderationLabel(item) === 'approved',
+    fields: [
+      ['companyId', 'Company', 'company', true],
+      ['title', 'Job title', 'text', true],
+      ['department', 'Department', 'text', true],
+      ['location', 'Location', 'text', true],
+      ['type', 'Work type', ['Full-time', 'Part-time', 'Contract', 'Internship']],
+      ['salary', 'Salary range', 'text'],
+      ['sector', 'Focus sector', IMPACT_SECTOR_OPTIONS],
+      ['experience', 'Experience level', LEVEL_OPTIONS],
+      ['impactArea', 'Impact area', 'text'],
+      ['status', 'Job status', [['active', 'Published'], ['closed', 'Closed']]],
+      ['description', 'About the role', 'textarea', true]
+    ]
+  },
+  company: {
+    label: 'Company',
+    plural: 'Companies',
+    records: (data) => data.companyProfiles || [],
+    id: (item) => item.companyId,
+    title: (item) => item.company,
+    detail: (item) => [(item.sectors?.length ? item.sectors : [item.sector]).filter(Boolean).join(', '), item.location].filter(Boolean).join(' · ') || 'No sector yet',
+    isPublic: (item) => moderationLabel(item) === 'approved',
+    fields: [
+      ['company', 'Company name', 'text', true],
+      ['sectors', 'Sectors (comma separated)', 'text'],
+      ['location', 'Location', 'text'],
+      ['website', 'Website', 'url'],
+      ['mission', 'Mission summary', 'textarea', true],
+      ['description', 'About the company', 'textarea']
+    ]
+  },
+  review: {
+    label: 'Review',
+    plural: 'Reviews',
+    records: (data) => data.reviews || [],
+    id: (item) => item.id,
+    title: (item) => item.headline,
+    detail: (item) => `${item.company} · ${item.rating}/5 · ${item.role}${item.hidden ? ' · hidden' : ''}`,
+    isPublic: (item) => !item.hidden && moderationLabel(item) === 'approved',
+    fields: [
+      ['company', 'Company', 'text', true],
+      ['companyUrl', 'Company URL', 'url'],
+      ['sector', 'Focus sector', IMPACT_SECTOR_OPTIONS],
+      ['role', 'Reviewer role', 'text', true],
+      ['location', 'Location', 'text', true],
+      ['rating', 'Rating', ['5', '4', '3', '2', '1']],
+      ['salary', 'Salary', 'text'],
+      ['headline', 'Headline', 'text', true],
+      ['pros', 'Pros', 'textarea', true],
+      ['cons', 'Cons', 'textarea', true],
+      ['advice', 'Advice to management', 'textarea']
+    ]
+  },
+  salary: {
+    label: 'Salary signal',
+    plural: 'Salary signals',
+    records: (data) => data.salarySignals || [],
+    id: (item) => item.id,
+    title: (item) => `${item.role} at ${item.company}`,
+    detail: (item) => `${salaryRange(item)} · ${item.level} · ${item.location}`,
+    isPublic: (item) => moderationLabel(item) === 'approved',
+    fields: [
+      ['company', 'Company', 'text', true],
+      ['role', 'Role', 'text', true],
+      ['location', 'Location', 'text', true],
+      ['level', 'Level', LEVEL_OPTIONS],
+      ['sector', 'Focus sector', IMPACT_SECTOR_OPTIONS],
+      ['currency', 'Currency', 'text', true],
+      ['salaryMin', 'Salary minimum', 'number', true],
+      ['salaryMax', 'Salary maximum', 'number', true],
+      ['workType', 'Work type', 'text'],
+      ['note', 'Note', 'textarea']
+    ]
+  }
+};
+
+function moderationLabel(item = {}) {
+  return MODERATION_LABELS[item.moderation_status] ? item.moderation_status : 'approved';
+}
+
+function adminCompanyOptions(data) {
+  const companies = new Map();
+  (data.employers || []).filter((user) => user.companyId).forEach((user) => companies.set(user.companyId, user.company || user.email));
+  (data.companyProfiles || []).forEach((profile) => companies.set(profile.companyId, profile.company));
+  return [...companies.entries()].sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+}
+
+function adminContentPanel(data, query) {
+  const type = state.adminContentType;
+  const config = ADMIN_CONTENT[type];
+  const items = config.records(data).filter((item) => `${config.title(item)} ${config.detail(item)} ${moderationLabel(item)}`.toLowerCase().includes(query));
+  const tabs = Object.entries(ADMIN_CONTENT).map(([key, item]) => `<button type="button" class="${key === type ? 'active' : ''}" data-admin-content-tab="${key}">${item.plural} (${item.records(data).length})</button>`).join('');
+  const rows = items.slice(0, 50).map((item) => {
+    const status = moderationLabel(item);
+    const id = escapeHtml(config.id(item));
+    const moderation = Object.keys(MODERATION_LABELS).filter((next) => next !== status).map((next) => `<button class="mini-button" data-admin-content-moderate="${id}" data-moderation-status="${next}">${next === 'approved' ? 'Approve' : next === 'rejected' ? 'Reject' : 'Mark pending'}</button>`).join('');
+    return `<tr><td><strong>${escapeHtml(config.title(item))}</strong><br><small>${escapeHtml(config.detail(item))}</small></td><td><span class="status ${status}">${MODERATION_LABELS[status]}</span></td><td>${config.isPublic(item) ? 'Yes' : 'No'}</td><td><div class="row-actions"><button class="mini-button" data-admin-content-edit="${id}">Edit</button>${moderation}</div></td></tr>`;
+  }).join('');
+  return `<section class="panel" id="admin-content-panel"><div class="panel-header"><div><h2>Marketplace content</h2><p>Create and edit marketplace content. New admin content starts as pending and only appears in the public APIs once approved.</p></div><button class="button primary" data-admin-content-new>New ${config.label.toLowerCase()}</button></div><div class="market-tabs admin-content-tabs">${tabs}</div>${items.length ? `<div class="table-wrap"><table><thead><tr><th>${config.label}</th><th>Moderation</th><th>Public</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div>` : emptyState('◇', `No ${config.plural.toLowerCase()} yet`, `Create the first ${config.label.toLowerCase()} to seed the marketplace.`)}</section>`;
+}
+
+function adminFieldInput([name, label, kind, isRequired], value, data) {
+  const requiredAttr = isRequired ? ' required' : '';
+  const wide = kind === 'textarea' ? ' class="span-2"' : '';
+  if (kind === 'textarea') return `<label${wide}>${label}<textarea name="${name}" rows="4"${requiredAttr}>${escapeHtml(value)}</textarea></label>`;
+  if (kind === 'company') return `<label>${label}<select name="${name}"${requiredAttr}><option value="">Choose company</option>${adminCompanyOptions(data).map(([id, companyLabel]) => `<option value="${escapeHtml(id)}" ${id === value ? 'selected' : ''}>${escapeHtml(companyLabel)}</option>`).join('')}</select></label>`;
+  if (Array.isArray(kind)) return `<label>${label}<select name="${name}">${kind.map((option) => { const [optionValue, optionLabel] = Array.isArray(option) ? option : [option, option]; return `<option value="${escapeHtml(optionValue)}" ${String(optionValue) === String(value) ? 'selected' : ''}>${escapeHtml(optionLabel)}</option>`; }).join('')}</select></label>`;
+  return `<label>${label}<input name="${name}" type="${kind}" value="${escapeHtml(value)}"${requiredAttr} /></label>`;
+}
+
+function openAdminContentDialog(id = '') {
+  const type = state.adminContentType;
+  const config = ADMIN_CONTENT[type];
+  const data = state.adminData || {};
+  const item = id ? config.records(data).find((record) => String(config.id(record)) === String(id)) : null;
+  const defaults = { currency: 'USD', status: 'active' };
+  const valueFor = (name) => {
+    if (!item) return defaults[name] ?? '';
+    if (name === 'sectors') return (item.sectors?.length ? item.sectors : [item.sector]).filter(Boolean).join(', ');
+    if (name === 'mission') return item.mission || item.description || '';
+    return item[name] ?? '';
+  };
+  const fields = config.fields.map((field) => field[2] === 'company' && item ? `<label>${field[1]}<input value="${escapeHtml(item.company)}" disabled /></label>` : adminFieldInput(field, valueFor(field[0]), data)).join('');
+  const status = item ? moderationLabel(item) : 'pending';
+  $('#admin-content-form').innerHTML = `<input type="hidden" name="id" value="${escapeHtml(id)}" /><div class="dialog-header"><div><p class="eyebrow">Admin content</p><h2>${item ? 'Edit' : 'New'} ${config.label.toLowerCase()}</h2></div><button type="button" class="close-button" data-admin-content-close>×</button></div><div class="form-grid">${fields}<label>Moderation<select name="moderation_status">${Object.entries(MODERATION_LABELS).map(([value, label]) => `<option value="${value}" ${value === status ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div><div class="dialog-actions"><button type="button" class="button subtle" data-admin-content-close>Cancel</button><button class="button primary" type="submit">${item ? 'Save changes' : `Create ${config.label.toLowerCase()}`}</button></div>`;
+  $$('[data-admin-content-close]').forEach((button) => button.addEventListener('click', () => $('#admin-content-dialog').close()));
+  $('#admin-content-dialog').showModal();
+}
+
+async function saveAdminContent(form) {
+  const { id, moderation_status: moderationStatus, ...fields } = formObject(form);
+  const button = form.querySelector('[type="submit"]');
+  button.disabled = true;
+  try {
+    await api('/api/admin', { method: 'PATCH', body: JSON.stringify({ action: 'content-save', type: state.adminContentType, id, fields, moderation_status: moderationStatus }) });
+    $('#admin-content-dialog').close();
+    state.adminData = await api('/api/admin');
+    renderAdminDashboard();
+    toast(id ? 'Content updated' : 'Content created');
+  } catch (error) { toast(error.message, true); }
+  finally { button.disabled = false; }
 }
 
 async function adminPatch(payload) {
@@ -1373,6 +1534,11 @@ $('#candidate-auth-form').addEventListener('submit', async (event) => {
     toast(state.candidateAuthMode === 'register' ? 'Job seeker account created' : 'Welcome back');
   } catch (error) { toast(error.message, true); }
   finally { button.disabled = false; }
+});
+
+$('#admin-content-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  saveAdminContent(event.currentTarget);
 });
 
 $('#job-form').addEventListener('submit', async (event) => {

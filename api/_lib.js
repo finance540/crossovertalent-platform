@@ -49,8 +49,18 @@ export function isProductionSmokeRecord(record = {}) {
   return /^Prod Smoke/i.test(String(record.title || '')) || /^Prod Smoke/i.test(String(record.company || ''));
 }
 
+export const MODERATION_STATUSES = ['approved', 'pending', 'rejected'];
+
+export function moderationStatus(record = {}) {
+  return MODERATION_STATUSES.includes(record.moderation_status) ? record.moderation_status : 'approved';
+}
+
+export function isApproved(record = {}) {
+  return moderationStatus(record) === 'approved';
+}
+
 export function isPublicJob(job = {}) {
-  return job.recordType === 'job' && job.schemaVersion >= 2 && job.status === 'active' && !isProductionSmokeRecord(job);
+  return job.recordType === 'job' && job.schemaVersion >= 2 && job.status === 'active' && isApproved(job) && !isProductionSmokeRecord(job);
 }
 
 export function employerStatus(account = {}) {
