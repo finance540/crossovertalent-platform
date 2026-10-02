@@ -9,6 +9,7 @@ import auth from '../api/auth.js';
 import admin from '../api/admin.js';
 import candidate from '../api/candidate.js';
 import company from '../api/company.js';
+import files from '../api/files.js';
 import jobs from '../api/jobs.js';
 import ops from '../api/ops.js';
 import reviews from '../api/reviews.js';
@@ -23,6 +24,7 @@ const routes = new Map([
   ['/api/admin', admin],
   ['/api/candidate', candidate],
   ['/api/company', company],
+  ['/api/files', files],
   ['/api/jobs', jobs],
   ['/api/reviews', reviews],
   ['/api/salary-signals', salarySignals],

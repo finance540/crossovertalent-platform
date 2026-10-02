@@ -641,8 +641,10 @@ async function withdrawApplication(id) {
 }
 
 function renderResumeTools() {
+  const savedCv = state.candidate.resumeAttachment;
+  const savedCvLink = savedCv?.id ? `<p class="muted">Saved CV: <a href="/api/files?id=${encodeURIComponent(savedCv.id)}" target="_blank" rel="noopener noreferrer">${escapeHtml(savedCv.name || 'Download CV')}</a></p>` : '';
   $('#candidate-content').innerHTML = `<section class="page-heading"><div><p class="eyebrow">Resume and AI</p><h1>Create or update your resume.</h1><p class="muted">Use your current resume and target role to generate a cleaner version.</p></div></section>
-  <section class="panel candidate-form-panel"><div class="ai-box"><strong>Upload CV</strong><p>Upload a PDF, DOCX, or TXT file to parse and save it to your candidate profile.</p><div class="inline-actions"><label class="upload-button">Upload CV<input id="candidate-resume-upload" type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" /></label></div><p class="muted" id="candidate-resume-upload-status">No CV parsed yet.</p></div><label>Current resume<textarea id="candidate-resume" rows="9">${escapeHtml(state.candidate.resume || '')}</textarea></label><label>Target role<input id="candidate-target-role" placeholder="e.g. Climate Data Lead" /></label><label>Key skills<input id="candidate-skills" placeholder="SQL, MRV, partnerships" /></label><div class="dialog-actions"><button class="button subtle" id="save-resume-profile">Save resume</button><button class="button primary" id="generate-candidate-resume">Generate AI resume</button></div><label>AI chat<textarea id="candidate-chat-message" rows="3" placeholder="Ask about improving your resume or job search strategy"></textarea></label><div class="dialog-actions"><button class="button subtle" id="candidate-chat-button">Ask AI</button></div><div id="candidate-ai-output" class="cv-panel hidden"></div></section>`;
+  <section class="panel candidate-form-panel"><div class="ai-box"><strong>Upload CV</strong><p>Upload a PDF, DOCX, or TXT file to parse and save it to your candidate profile.</p><div class="inline-actions"><label class="upload-button">Upload CV<input id="candidate-resume-upload" type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" /></label></div><p class="muted" id="candidate-resume-upload-status">${savedCv ? `Saved CV: ${escapeHtml(savedCv.name || 'CV uploaded')}` : 'No CV parsed yet.'}</p>${savedCvLink}</div><label>Current resume<textarea id="candidate-resume" rows="9">${escapeHtml(state.candidate.resume || '')}</textarea></label><label>Target role<input id="candidate-target-role" placeholder="e.g. Climate Data Lead" /></label><label>Key skills<input id="candidate-skills" placeholder="SQL, MRV, partnerships" /></label><div class="dialog-actions"><button class="button subtle" id="save-resume-profile">Save resume</button><button class="button primary" id="generate-candidate-resume">Generate AI resume</button></div><label>AI chat<textarea id="candidate-chat-message" rows="3" placeholder="Ask about improving your resume or job search strategy"></textarea></label><div class="dialog-actions"><button class="button subtle" id="candidate-chat-button">Ask AI</button></div><div id="candidate-ai-output" class="cv-panel hidden"></div></section>`;
   $('#candidate-resume-upload').addEventListener('change', uploadCandidateResume);
   $('#save-resume-profile').addEventListener('click', () => saveCandidateProfile({ resume: $('#candidate-resume').value }));
   $('#generate-candidate-resume').addEventListener('click', () => generateCandidateResume());
@@ -658,7 +660,8 @@ async function uploadCandidateResume(event) {
     payload.purpose = 'cv';
     const parsed = await api('/api/assist', { method: 'POST', body: JSON.stringify({ action: 'parse-document', file: payload }) });
     $('#candidate-resume').value = parsed.text;
-    await saveCandidateProfile({ resume: parsed.text });
+    const saved = await saveCandidateProfile({ resume: parsed.text, resumeAttachmentId: parsed.file.id });
+    if (!saved) throw new Error('The CV was uploaded but could not be linked to your profile. Please try again.');
     const confidence = parsed.readabilityScore ? `${parsed.confidence} confidence (${Math.round(parsed.readabilityScore * 100)}% readable)` : `${parsed.confidence} confidence`;
     const method = parsed.extractionMethod === 'ocr' ? 'OCR parsed' : 'parsed';
     $('#candidate-resume-upload-status').textContent = `${parsed.file.fileName || parsed.file.name || file.name} uploaded, ${method}, and saved to your profile with ${confidence}.`;
@@ -827,7 +830,7 @@ function openApplication(id) {
   if (!item) return;
   const safeLink = safeExternalUrl(item.linkedin);
   const link = safeLink ? `<a href="${safeLink}" target="_blank" rel="noopener">Open link ↗</a>` : '<strong>Not provided</strong>';
-  const cvBlock = item.cv_text || item.revised_cv ? `<div class="cv-panel"><h3>Candidate CV</h3>${item.cvAttachment?.name ? `<p><strong>Attachment:</strong> ${escapeHtml(item.cvAttachment.name)}</p>` : ''}${item.linkedin_note ? `<p>${escapeHtml(item.linkedin_note)}</p>` : ''}${item.revised_cv ? `<h4>AI revised CV</h4><pre>${escapeHtml(item.revised_cv)}</pre>` : ''}${item.cv_text ? `<h4>Parsed CV text</h4><pre>${escapeHtml(item.cv_text)}</pre>` : ''}</div>` : '';
+  const cvBlock = item.cvAttachment?.id || item.cv_text || item.revised_cv ? `<div class="cv-panel"><h3>Candidate CV</h3>${item.cvAttachment?.name ? `<p><strong>Attachment:</strong> ${escapeHtml(item.cvAttachment.name)}</p>` : ''}${item.cvAttachment?.id ? `<p><a class="button subtle" href="/api/files?id=${encodeURIComponent(item.cvAttachment.id)}" target="_blank" rel="noopener noreferrer">Download CV</a></p>` : ''}${item.linkedin_note ? `<p>${escapeHtml(item.linkedin_note)}</p>` : ''}${item.revised_cv ? `<h4>AI revised CV</h4><pre>${escapeHtml(item.revised_cv)}</pre>` : ''}${item.cv_text ? `<h4>Parsed CV text</h4><pre>${escapeHtml(item.cv_text)}</pre>` : ''}</div>` : '';
   $('#application-detail').innerHTML = `<div class="dialog-header"><p class="eyebrow">Candidate profile</p><button class="close-button" data-detail-close>×</button></div><div class="application-hero"><span class="avatar">${initials(item.name)}</span><div><h2>${escapeHtml(item.name)}</h2><p>${escapeHtml(item.job_title)} · <a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a></p></div></div><div class="detail-grid"><div><small>Phone</small><strong>${escapeHtml(item.phone || 'Not provided')}</strong></div><div><small>Location</small><strong>${escapeHtml(item.location || 'Not provided')}</strong></div><div><small>Profile</small>${link}</div></div><p class="cover-letter">${escapeHtml(item.cover_letter)}</p>${cvBlock}<div class="candidate-actions"><select id="application-status"><option value="applied">Applied</option><option value="shortlisted">Shortlisted</option><option value="interview">Interview</option><option value="offered">Offered</option><option value="rejected">Rejected</option><option value="hired">Hired</option><option value="withdrawn">Withdrawn</option></select><a class="button subtle" href="mailto:${escapeHtml(item.email)}?subject=${encodeURIComponent(`Your application for ${item.job_title}`)}">Email</a><button class="button primary" id="save-status">Save status</button></div>`;
   $('#application-status').value = ({ new: 'applied', review: 'shortlisted', offer: 'offered' })[item.status] || item.status || 'applied';
   $('[data-detail-close]').addEventListener('click', () => $('#application-dialog').close());
@@ -1047,14 +1050,17 @@ function openJobDetail(id) {
 function openApply(id) {
   const job = state.publicJobs.find((item) => String(item.id) === String(id));
   if (!job) return;
+  const form = $('#apply-form');
+  form.reset();
   $('#apply-form [name="jobId"]').value = job.id;
   if (state.candidate) {
-    const form = $('#apply-form');
     form.elements.name.value = state.candidate.name || '';
     form.elements.email.value = state.candidate.email || '';
     form.elements.linkedin.value = state.candidate.linkedin || '';
     form.elements.cvText.value = state.candidate.resume || '';
+    form.elements.cvAttachment.value = state.candidate.resumeAttachment?.id ? JSON.stringify(state.candidate.resumeAttachment) : '';
     form.elements.linkedinNote.value = state.candidate.linkedin ? 'LinkedIn profile attached from job seeker dashboard.' : '';
+    $('#cv-parse-status').textContent = state.candidate.resumeAttachment?.name ? `Saved CV attached: ${state.candidate.resumeAttachment.name}` : 'No CV parsed yet.';
   }
   $('#apply-job-title').textContent = job.title;
   $('#apply-company').textContent = `${job.company} · ${job.location} · ${job.type}`;
@@ -1084,7 +1090,11 @@ async function saveCandidateProfile(changes = {}) {
     state.candidate = data.candidate;
     renderCandidateDashboard();
     toast('Profile saved');
-  } catch (error) { toast(error.message, true); }
+    return true;
+  } catch (error) {
+    toast(error.message, true);
+    return false;
+  }
 }
 
 async function generateCandidateResume() {

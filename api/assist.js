@@ -1,4 +1,4 @@
-import { allowStorageFallback, auditLog, assertSameOrigin, employerStatus, employerStatusMessage, ensureStorage, forbidden, listRecords, openAiChat, productEvent, rateLimit, readRecord, readSession, requireSession, serverError, setSecurityHeaders, stableHash, tooManyRequests, uploadPrivateFile, writeRecord } from './_lib.js';
+import { allowStorageFallback, auditLog, assertSameOrigin, employerStatus, employerStatusMessage, ensureStorage, forbidden, listRecords, openAiChat, productEvent, rateLimit, readRecord, readSession, requireApprovedEmployerSession, requireSession, serverError, setSecurityHeaders, stableHash, tooManyRequests, uploadPrivateFile, writeRecord } from './_lib.js';
 import mammoth from 'mammoth';
 import { randomUUID } from 'node:crypto';
 
@@ -254,9 +254,10 @@ function uploadKind(file = {}, fallback = 'document') {
 }
 
 function bucketForKind(kind) {
-  if (kind === 'cv') return process.env.SUPABASE_CV_BUCKET || 'crossover-cvs-staging';
-  if (kind === 'job-description') return process.env.SUPABASE_JD_BUCKET || 'crossover-job-descriptions-staging';
-  return process.env.SUPABASE_FILE_BUCKET || 'crossover-job-descriptions-staging';
+  const production = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+  if (kind === 'cv') return process.env.SUPABASE_CV_BUCKET || (production ? 'crossover-cvs-production' : 'crossover-cvs-staging');
+  if (kind === 'job-description') return process.env.SUPABASE_JD_BUCKET || (production ? 'crossover-job-descriptions-production' : 'crossover-job-descriptions-staging');
+  return process.env.SUPABASE_FILE_BUCKET || (production ? 'crossover-job-descriptions-production' : 'crossover-job-descriptions-staging');
 }
 
 function assertFileSignature(file = {}, buffer) {
@@ -478,7 +479,34 @@ async function extractReadableText(file = {}) {
   return { text: truncate(normalizeExtractedText(text), 8000), method: mime.includes('pdf') || name.endsWith('.pdf') ? 'pdf-text' : (mime.includes('word') || name.endsWith('.docx') || name.endsWith('.doc') ? 'docx-text' : 'plain-text') };
 }
 
-async function storeUploadedFile(file = {}, buffer, parsedText = '') {
+async function uploadedFileOwner(request, response, kind) {
+  if (kind === 'cv') {
+    const session = readSession(request);
+    if (!session) {
+      response.status(401).json({ error: 'Sign in as a job seeker to upload a CV' });
+      return null;
+    }
+    if (session.role !== 'candidate') {
+      response.status(403).json({ error: 'Only job seekers can upload CVs' });
+      return null;
+    }
+    const candidate = await readRecord(`candidates/${stableHash(session.email)}.json`);
+    if (!candidate || candidate.id !== session.candidateId || candidate.disabled || !candidate.emailVerified) {
+      response.status(403).json({ error: 'A verified job seeker account is required to upload a CV' });
+      return null;
+    }
+    return { role: 'candidate', id: candidate.id, email: candidate.email };
+  }
+  if (kind === 'job-description') {
+    const employer = await requireApprovedEmployerSession(request, response);
+    if (!employer) return null;
+    return { role: 'employer', id: employer.companyId, companyId: employer.companyId, email: employer.email };
+  }
+  response.status(400).json({ error: 'Choose a supported file purpose' });
+  return null;
+}
+
+async function storeUploadedFile(file = {}, buffer, owner) {
   const kind = uploadKind(file);
   const bucket = bucketForKind(kind);
   const extension = String(file.name || 'upload.txt').split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'txt';
@@ -492,11 +520,11 @@ async function storeUploadedFile(file = {}, buffer, parsedText = '') {
       contentType: file.type || 'application/octet-stream',
       metadata: { kind, name: clean(file.name), size: Number(file.size || buffer.length) }
     });
-    const metadata = { recordType: 'uploaded_file', id, bucket, objectPath, kind, fileName: clean(file.name), fileType: clean(file.type), fileSize: Number(file.size || buffer.length), parsedText: truncate(parsedText, 2000), virusScanStatus: process.env.FILE_SCAN_PROVIDER ? 'queued' : 'not_configured', created_at: new Date().toISOString() };
+    const metadata = { recordType: 'uploaded_file', id, bucket, objectPath, kind, ownerRole: owner.role, ownerId: owner.id, ownerEmail: owner.email, ...(owner.companyId ? { companyId: owner.companyId } : {}), fileName: clean(file.name), fileType: clean(file.type), fileSize: Number(file.size || buffer.length), virusScanStatus: process.env.FILE_SCAN_PROVIDER ? 'queued' : 'not_configured', created_at: new Date().toISOString() };
     await writeRecord(`uploaded-files/${id}.json`, metadata);
     return metadata;
   } catch (error) {
-    if (!allowStorageFallback()) throw new Error(`File upload failed: ${error.message}`);
+    if (kind !== 'logo' || !allowStorageFallback()) throw new Error(`File upload failed: ${error.message}`);
     await auditLog('file.storage_fallback', { entityType: 'uploaded_file', metadata: { name: clean(file.name), error: error.message } });
     return { id, kind, fileName: clean(file.name), fileType: clean(file.type), fileSize: Number(file.size || buffer.length), storageFallback: true, virusScanStatus: 'not_configured' };
   }
@@ -775,6 +803,9 @@ export default async function handler(request, response) {
       return response.json(result);
     }
     if (action === 'parse-document') {
+      const kind = uploadKind(file);
+      const owner = await uploadedFileOwner(request, response, kind);
+      if (!owner) return;
       const buffer = decodeUpload(file);
       assertFileSignature(file, buffer);
       const mime = String(file?.type || '').toLowerCase();
@@ -796,9 +827,9 @@ export default async function handler(request, response) {
         return response.status(422).json({ error: `The file uploaded, but readable text could not be extracted.${detail} Upload a clearer text-based PDF/DOCX/TXT, try a higher-quality scan, or paste the JD content manually.` });
       }
       const formattedText = formatParsedDocument(text, file);
-      const stored = await storeUploadedFile(file, buffer, formattedText);
+      const stored = await storeUploadedFile(file, buffer, owner);
       await productEvent(uploadKind(file) === 'cv' ? 'cv_uploaded' : 'file_uploaded', { entityType: 'uploaded_file', entityId: stored.id, metadata: { kind: stored.kind, fileType: stored.fileType, fileSize: stored.fileSize, parsed: Boolean(formattedText), formatted: formattedText !== text } });
-      return response.json({ text: formattedText, rawTextPreview: truncateLines(text, 1200), file: { name: clean(file?.name), type: clean(file?.type), size: Number(file?.size || 0), storage: stored }, confidence: parsingConfidence(text), readabilityScore: Number(readabilityScore(text).toFixed(2)), extractionMethod: method, ocrFallback: method === 'ocr', ocrPages: ocr?.pages || 0 });
+      return response.json({ text: formattedText, rawTextPreview: truncateLines(text, 1200), file: { id: stored.id, name: stored.fileName, type: stored.fileType, size: stored.fileSize, kind: stored.kind }, confidence: parsingConfidence(text), readabilityScore: Number(readabilityScore(text).toFixed(2)), extractionMethod: method, ocrFallback: method === 'ocr', ocrPages: ocr?.pages || 0 });
     }
     if (action === 'generate-job-description') {
       const session = requireSession(request, response);

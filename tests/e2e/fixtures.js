@@ -33,7 +33,7 @@ export async function registerVerifyLogin(request, endpoint, registerBody, login
   return result;
 }
 
-export async function parseTxtUpload(request, text, purpose = 'cv') {
+export async function parseTxtUpload(request, text, purpose = 'cv', cookie = '') {
   const payload = {
     action: 'parse-document',
     file: {
@@ -44,8 +44,7 @@ export async function parseTxtUpload(request, text, purpose = 'cv') {
       data: Buffer.from(text).toString('base64')
     }
   };
-  const result = await api(request, '/api/assist', { method: 'POST', body: payload });
+  const result = await api(request, '/api/assist', { method: 'POST', body: payload, cookie });
   expect(result.response.ok()).toBeTruthy();
   return result.data;
 }
-

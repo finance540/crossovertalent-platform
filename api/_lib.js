@@ -29,6 +29,18 @@ function configuredStorageDriver() {
   return configuredSupabaseUrl() && configuredSupabaseAdminKey() ? 'supabase' : 'blob';
 }
 
+function configuredPrivateFileDriver() {
+  const requested = (process.env.PRIVATE_FILE_STORAGE_DRIVER || '').toLowerCase();
+  const production = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+  const driver = requested || (configuredStorageDriver() === 'local'
+    ? 'local'
+    : configuredSupabaseUrl() && configuredSupabaseAdminKey()
+      ? 'supabase'
+      : '');
+  if (production && driver !== 'supabase') throw new Error('Production private file storage requires Supabase Storage');
+  return driver;
+}
+
 export function allowStorageFallback() {
   return configuredStorageDriver() !== 'supabase' || (process.env.VERCEL_ENV !== 'production' && process.env.NODE_ENV !== 'production');
 }
@@ -487,7 +499,27 @@ function supabaseStorageBase(bucket, objectPath = '') {
 let supabaseStorageClient;
 
 const STORAGE_BUCKET_CONFIG = {
+  'crossover-cvs-staging': {
+    public: false,
+    fileSizeLimit: 5_242_880,
+    allowedMimeTypes: [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain'
+    ]
+  },
   'crossover-cvs-production': {
+    public: false,
+    fileSizeLimit: 5_242_880,
+    allowedMimeTypes: [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain'
+    ]
+  },
+  'crossover-job-descriptions-staging': {
     public: false,
     fileSizeLimit: 5_242_880,
     allowedMimeTypes: [
@@ -537,23 +569,34 @@ function isMissingBucketError(error) {
 
 async function ensureSupabaseBucket(client, bucket) {
   const config = STORAGE_BUCKET_CONFIG[bucket];
-  if (!config) return;
+  const isPrivate = (current) => {
+    if (current.error) throw new Error(`Supabase Storage bucket check failed: ${current.error.message}`);
+    if (current.data?.public !== false) throw new Error(`Supabase Storage bucket ${bucket} must be private`);
+  };
   const current = await client.storage.getBucket(bucket);
-  if (!current.error) return;
+  if (!current.error) {
+    if (config && current.data?.public !== config.public) throw new Error(`Supabase Storage bucket ${bucket} has an unexpected access setting`);
+    if (!config && current.data?.public !== false) throw new Error(`Supabase Storage bucket ${bucket} must be private`);
+    return;
+  }
   if (!isMissingBucketError(current.error)) throw new Error(`Supabase Storage bucket check failed: ${current.error.message}`);
+  if (!config) throw new Error(`Supabase Storage bucket ${bucket} needs an explicit configuration`);
   const created = await client.storage.createBucket(bucket, config);
   if (created.error && !/already exists/i.test(created.error.message || '')) throw new Error(`Supabase Storage bucket creation failed: ${created.error.message}`);
+  isPrivate(await client.storage.getBucket(bucket));
 }
 
 export async function uploadPrivateFile({ bucket, objectPath, buffer, contentType = 'application/octet-stream', metadata = {} }) {
   if (!bucket || !objectPath) throw new Error('File upload target is missing');
-  if (configuredStorageDriver() === 'local') {
-    const target = localPath(`files/${bucket}/${objectPath}`);
+  const driver = configuredPrivateFileDriver();
+  if (driver === 'local') {
+    const target = localFilePath(bucket, objectPath);
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, buffer);
     await auditLog('file.uploaded', { entityType: 'uploaded_file', entityId: objectPath, metadata: { bucket, contentType, ...metadata } });
     return { bucket, objectPath };
   }
+  if (driver !== 'supabase') throw new Error('Private object storage is not configured');
   const client = supabaseAdminStorage();
   await ensureSupabaseBucket(client, bucket);
   const { error } = await client.storage.from(bucket).upload(objectPath, buffer, {
@@ -570,12 +613,65 @@ export async function uploadPrivateFile({ bucket, objectPath, buffer, contentTyp
   return { bucket, objectPath };
 }
 
-export async function createSignedFileUrl(bucket, objectPath, expiresIn = 600) {
-  if (configuredStorageDriver() === 'local') return { signedUrl: `local://${bucket}/${objectPath}`, expiresIn };
+function safeDownloadName(fileName = '') {
+  return path.basename(String(fileName).replaceAll('\\', '/')).replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 120) || 'download';
+}
+
+function localFilePath(bucket, objectPath) {
+  if (!/^[a-z0-9-]{1,120}$/i.test(bucket)) throw new Error('Invalid file bucket');
+  const segments = String(objectPath).split('/');
+  if (!segments.length || segments.some((segment) => !segment || segment === '.' || segment === '..' || !/^[a-z0-9._-]+$/i.test(segment))) throw new Error('Invalid file path');
+  const root = localPath(`files/${bucket}`);
+  const target = path.resolve(root, ...segments);
+  if (!target.startsWith(`${root}${path.sep}`)) throw new Error('Invalid file path');
+  return target;
+}
+
+function createLocalFileToken(bucket, objectPath, fileName, expiresIn) {
+  const payload = Buffer.from(JSON.stringify({
+    bucket,
+    objectPath,
+    fileName: safeDownloadName(fileName),
+    exp: Date.now() + expiresIn * 1000
+  })).toString('base64url');
+  const signature = createHmac('sha256', secret()).update(`local-file:${payload}`).digest('base64url');
+  return `${payload}.${signature}`;
+}
+
+export function verifyLocalFileToken(token) {
+  if (configuredPrivateFileDriver() !== 'local') return null;
+  const [payload, signature, extra] = String(token || '').split('.');
+  if (!payload || !signature || extra || signature.length > 100) return null;
+  const expected = createHmac('sha256', secret()).update(`local-file:${payload}`).digest('base64url');
+  if (signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
+  try {
+    const value = JSON.parse(Buffer.from(payload, 'base64url').toString());
+    if (!Number.isSafeInteger(value.exp) || value.exp <= Date.now() || value.exp > Date.now() + 610_000) return null;
+    localFilePath(value.bucket, value.objectPath);
+    return { bucket: value.bucket, objectPath: value.objectPath, fileName: safeDownloadName(value.fileName) };
+  } catch {
+    return null;
+  }
+}
+
+export async function readPrivateFile(bucket, objectPath) {
+  if (configuredPrivateFileDriver() !== 'local') throw new Error('Local private file access is unavailable');
+  return readFile(localFilePath(bucket, objectPath));
+}
+
+export async function createSignedFileUrl(bucket, objectPath, expiresIn = 300, fileName = '') {
+  const safeExpiresIn = Math.min(600, Math.max(60, Number(expiresIn) || 300));
+  const driver = configuredPrivateFileDriver();
+  if (driver === 'local') {
+    const token = createLocalFileToken(bucket, objectPath, fileName, safeExpiresIn);
+    return { signedUrl: `/api/files?token=${encodeURIComponent(token)}`, expiresIn: safeExpiresIn };
+  }
+  if (driver !== 'supabase') throw new Error('Private object storage is not configured');
   const client = supabaseAdminStorage();
-  const { data, error } = await client.storage.from(bucket).createSignedUrl(objectPath, expiresIn);
+  await ensureSupabaseBucket(client, bucket);
+  const { data, error } = await client.storage.from(bucket).createSignedUrl(objectPath, safeExpiresIn, { download: safeDownloadName(fileName) });
   if (error) throw new Error(`Signed URL failed: ${error.message}`);
-  return { signedUrl: data?.signedUrl, expiresIn };
+  return { signedUrl: data?.signedUrl, expiresIn: safeExpiresIn };
 }
 
 export async function hashPassword(password) {

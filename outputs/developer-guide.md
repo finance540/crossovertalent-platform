@@ -73,6 +73,14 @@ E2E tests cover:
 
 Install the Chromium browser once with `npx playwright install chromium`, then run `npm run test:e2e`. Playwright starts a local Node server with isolated file storage; no Vercel, Supabase, or email-provider credentials are needed. To test a deployed environment instead, set `PLAYWRIGHT_BASE_URL` or `STAGING_APP_URL` to its URL.
 
+## Secure CV Storage
+
+- CV objects are stored in private Supabase Storage buckets in configured deployments. The default buckets are `crossover-cvs-staging` and `crossover-cvs-production`; set `SUPABASE_CV_BUCKET` only when using a different private bucket.
+- Provide `NEXT_PUBLIC_SUPABASE_URL` and the server-only `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_SECRET_KEY`). The storage service role key must never be exposed to browser code.
+- CV object storage is selected separately from the record database. It automatically uses Supabase when Supabase credentials are configured, even if `STORAGE_DRIVER` is set to `blob`; `PRIVATE_FILE_STORAGE_DRIVER=supabase` can make that choice explicit. The default local E2E setup uses local files and signed, expiring tokens.
+- Upload metadata is stored with the existing record storage driver. CV downloads go through `/api/files`, which authorizes the candidate owner or an approved employer with an application at their company, then issues an access link that expires within five minutes.
+- Existing CV buckets must be private. The server rejects a configured Supabase bucket if it is public. Never make CV buckets public or expose object paths as download links.
+
 ## Development Rules
 
 - Do not hardcode secrets.

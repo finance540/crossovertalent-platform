@@ -27,7 +27,18 @@ export default async function handler(request, response) {
       const applicationId = stableHash(`${job.id}:${applicantEmail}`).slice(0, 32);
       const pathname = `companies/${job.companyId}/applications/${applicationId}.json`;
       if (await readRecord(pathname)) return response.status(409).json({ error: 'You have already applied for this role' });
-      const application = { recordType: 'application', id: applicationId, job_id: job.id, companyId: job.companyId, job_title: job.title, name: applicantName, email: applicantEmail, phone: phone.trim(), location: location.trim(), linkedin: linkedin.trim(), linkedin_note: linkedinNote.trim(), cover_letter: coverLetter.trim(), cvAttachment, cv_text: cvText.trim(), revised_cv: revisedCv.trim(), status: 'applied', created_at: new Date().toISOString() };
+      let safeCvAttachment = null;
+      if (cvAttachment) {
+        if (!candidateSession || typeof cvAttachment !== 'object' || Array.isArray(cvAttachment) || !cvAttachment.id) {
+          return response.status(400).json({ error: 'Sign in as a job seeker and choose a valid CV upload' });
+        }
+        const uploadedFile = await readRecord(`uploaded-files/${clean(cvAttachment.id)}.json`);
+        if (!uploadedFile || uploadedFile.kind !== 'cv' || uploadedFile.ownerRole !== 'candidate' || uploadedFile.ownerId !== candidateSession.candidateId || uploadedFile.ownerEmail !== applicantEmail) {
+          return response.status(403).json({ error: 'This CV upload does not belong to your account' });
+        }
+        safeCvAttachment = { id: uploadedFile.id, name: uploadedFile.fileName, type: uploadedFile.fileType, size: uploadedFile.fileSize };
+      }
+      const application = { recordType: 'application', id: applicationId, job_id: job.id, companyId: job.companyId, job_title: job.title, name: applicantName, email: applicantEmail, phone: phone.trim(), location: location.trim(), linkedin: linkedin.trim(), linkedin_note: linkedinNote.trim(), cover_letter: coverLetter.trim(), cvAttachment: safeCvAttachment, cv_text: cvText.trim(), revised_cv: revisedCv.trim(), status: 'applied', created_at: new Date().toISOString() };
       await writeRecord(pathname, application);
       const profile = await readRecord(`companies/${job.companyId}/profile.json`).catch(() => null);
       await Promise.all([
