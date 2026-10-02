@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 
 const files = {
   app: await readFile('outputs/app.js', 'utf8'),
+  i18n: await readFile('outputs/i18n.js', 'utf8'),
   html: await readFile('outputs/index.html', 'utf8'),
   lib: await readFile('api/_lib.js', 'utf8'),
   assist: await readFile('api/assist.js', 'utf8'),
@@ -47,6 +48,21 @@ includes('app', /Candidate onboarding tour/, 'candidate onboarding tour exists')
 includes('app', /Admin onboarding tour/, 'admin onboarding tour exists');
 includes('html', /og:title/, 'Open Graph metadata exists');
 includes('html', /twitter:card/, 'Twitter card metadata exists');
+includes('html', /id="language-switcher"/, 'language switcher exists');
+includes('html', /i18n\.js/, 'translation catalog is loaded');
+includes('app', /localStorage\.getItem\(localeStorageKey\)/, 'locale preference is persisted');
+includes('app', /applyLocale\(event\.target\.value\)/, 'locale switching updates the UI');
+includes('app', /const originalTextNodes = new WeakMap\(\)/, 'locale switching tracks source text for reversible updates');
+includes('app', /new MutationObserver/, 'newly rendered views are localized automatically');
+includes('app', /select\[data-language-switcher\]/, 'all authenticated views can switch locale');
+includes('i18n', /'nav\.howItWorks'/, 'English translation catalog exists');
+includes('i18n', /'使い方'/, 'Japanese translation catalog exists');
+includes('i18n', /'求人を探す'/, 'Japanese marketplace interface copy exists');
+includes('i18n', /'求人を投稿'/, 'Japanese employer interface copy exists');
+includes('html', /data-i18n="hero\.h1Lead"/, 'hero heading is localized');
+includes('html', /data-i18n="hero\.findJobs"/, 'hero primary CTA is localized');
+includes('html', /data-i18n="hero\.noteCoverage"/, 'hero proof note is localized');
+assert.ok((files.html.match(/data-language-switcher/g) || []).length >= 7, 'language switchers are available across primary views');
 includes('html', /application\/ld\+json/, 'structured data exists');
 includes('html', /id="pricing"/, 'pricing placeholders are integrated');
 includes('html', /id="faq"/, 'FAQ content is integrated');

@@ -2,9 +2,86 @@ const LIVE_ORIGIN = 'https://build-me-a-simple-website-where.vercel.app';
 const MAX_UPLOAD_BYTES = 3_000_000;
 const state = { user: null, candidate: null, admin: null, adminData: null, companyProfile: null, candidateApplications: [], myReviews: [], jobs: [], applications: [], publicJobs: [], publicCompanies: null, publicReviews: [], publicSalarySignals: [], salaryAggregates: [], notifications: [], publicTab: 'jobs', adminContentType: 'job', view: 'overview', candidateView: 'overview', authMode: 'login', candidateAuthMode: 'login', adminAuthMode: 'login', search: '', candidateSearch: '', publicSearch: '', sector: '', location: '', level: '', workType: '', functionFilter: '', industry: '', pages: { jobs: 1, applications: 1, publicJobs: 1, publicReviews: 1, publicSalaries: 1, admin: 1 }, pageSize: 10 };
 let liveSyncTimer;
+const localeStorageKey = 'crossover-talent-locale';
+let locale = localStorage.getItem(localeStorageKey) === 'ja' ? 'ja' : 'en';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const assistantHistory = JSON.parse(sessionStorage.getItem('ct_assistant_history') || '[]').slice(-8);
+const originalTextNodes = new WeakMap();
+const originalAttributes = new WeakMap();
+
+function translatedCopy(value = '') {
+  const source = String(value);
+  return window.CrossoverTranslations?.[locale]?.copy?.[source] || source;
+}
+
+function shouldTranslate(element) {
+  return element && !element.closest('script,style,[data-i18n],[data-i18n-ignore],.user-content,.job-description,.cover-letter,.assistant-message');
+}
+
+function localizeDom(root = document.body) {
+  if (!root) return;
+  const localizeTextNode = (node) => {
+    const element = node.parentElement;
+    if (!shouldTranslate(element)) return;
+    const source = originalTextNodes.has(node) ? originalTextNodes.get(node) : node.nodeValue;
+    if (!originalTextNodes.has(node)) originalTextNodes.set(node, source);
+    const trimmed = source.trim();
+    if (!trimmed || !window.CrossoverTranslations?.[locale]?.copy?.[trimmed]) return;
+    const leading = source.match(/^\s*/)?.[0] || '';
+    const trailing = source.match(/\s*$/)?.[0] || '';
+    const translated = leading + translatedCopy(trimmed) + trailing;
+    if (node.nodeValue !== translated) node.nodeValue = translated;
+  };
+  if (root.nodeType === Node.TEXT_NODE) localizeTextNode(root);
+  else {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) localizeTextNode(node);
+  }
+  const elements = root.nodeType === Node.ELEMENT_NODE && root.matches('[placeholder],[title],[aria-label]')
+    ? [root, ...root.querySelectorAll('[placeholder],[title],[aria-label]')]
+    : root.nodeType === Node.TEXT_NODE ? [] : [...root.querySelectorAll('[placeholder],[title],[aria-label]')];
+  elements.forEach((element) => {
+    if (!shouldTranslate(element)) return;
+    const attributes = originalAttributes.get(element) || new Map();
+    ['placeholder', 'title', 'aria-label'].forEach((attribute) => {
+      if (!element.hasAttribute(attribute)) return;
+      if (!attributes.has(attribute)) attributes.set(attribute, element.getAttribute(attribute));
+      const source = attributes.get(attribute);
+      if (window.CrossoverTranslations?.[locale]?.copy?.[source]) element.setAttribute(attribute, translatedCopy(source));
+    });
+    originalAttributes.set(element, attributes);
+  });
+}
+
+function applyMarkedTranslations(root = document.body) {
+  const elements = root.nodeType === Node.ELEMENT_NODE && root.matches('[data-i18n]')
+    ? [root, ...root.querySelectorAll('[data-i18n]')]
+    : [...root.querySelectorAll('[data-i18n]')];
+  elements.forEach((element) => {
+    const value = window.CrossoverTranslations?.[locale]?.[element.dataset.i18n];
+    if (value && element.textContent !== value) element.textContent = value;
+  });
+}
+
+function applyLocale(nextLocale = locale) {
+  locale = nextLocale === 'ja' ? 'ja' : 'en';
+  localStorage.setItem(localeStorageKey, locale);
+  document.documentElement.lang = locale;
+  applyMarkedTranslations();
+  localizeDom();
+  $$('select[data-language-switcher], #language-switcher').forEach((switcher) => { switcher.value = locale; });
+}
+
+const localeObserver = new MutationObserver((records) => {
+  const addedNodes = new Set(records.flatMap((record) => [...record.addedNodes]).filter((node) => [Node.ELEMENT_NODE, Node.TEXT_NODE].includes(node.nodeType)));
+  addedNodes.forEach((node) => {
+    if (node.nodeType === Node.ELEMENT_NODE) applyMarkedTranslations(node);
+    localizeDom(node);
+  });
+});
+localeObserver.observe(document.body, { childList: true, subtree: true });
 
 function escapeHtml(value = '') {
   return String(value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
@@ -1838,6 +1915,7 @@ $('#assistant-form')?.addEventListener('submit', (event) => {
   event.preventDefault();
   submitAssistantPrompt();
 });
+$$('select[data-language-switcher], #language-switcher').forEach((switcher) => switcher.addEventListener('change', (event) => applyLocale(event.target.value)));
 
 async function init() {
   const params = new URLSearchParams(location.search);
@@ -1886,5 +1964,6 @@ async function init() {
 }
 
 setAuthMode('login');
+applyLocale();
 renderNotifications();
 init();
