@@ -18,6 +18,8 @@ Configure in Vercel Project Settings:
 - `SESSION_SECRET`
 - `OPENAI_API_KEY`
 - `RESEND_API_KEY`
+- `RESEND_FROM_EMAIL`
+- `CRON_SECRET` (protects the scheduled job-alert digest endpoint)
 - `EMAIL_FROM`
 - `NEXT_PUBLIC_APP_URL`
 - `STORAGE_DRIVER=supabase`
@@ -44,6 +46,7 @@ Configure in Vercel Project Settings:
 3. Add DNS records.
 4. Add `RESEND_API_KEY`.
 5. Test verification, password reset, employer notification, and candidate notification emails.
+6. Configure `CRON_SECRET` and verify the daily job-alert digest schedule on a Production deployment; Vercel Cron does not run on Preview deployments. See `outputs/resend-production-setup.md`.
 
 ## AI Setup
 

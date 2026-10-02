@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { appUrl, assertSameOrigin, ensureStorage, methodNotAllowed, productEvent, readRecord, rateLimit, requireApprovedEmployerSession, serverError, setSecurityHeaders, stableHash, tooManyRequests, writeRecord } from './_lib.js';
+import { appUrl, assertSameOrigin, ensureStorage, isPublicJob, methodNotAllowed, productEvent, readRecord, rateLimit, requireApprovedEmployerSession, serverError, setSecurityHeaders, stableHash, tooManyRequests, writeRecord } from './_lib.js';
 import { activeSubscription, billingPlan, billingPlanForPrice, billingPlans, billingEnforced, companySubscription, stripeTestKeyConfigured } from './_billing.js';
+import { notifyPublishedJob } from './_job-alerts.js';
 
 export const config = { api: { bodyParser: false } };
 
@@ -116,11 +117,13 @@ async function handleWebhook(request, response) {
       const pathname = `companies/${companyId}/jobs/${jobId}.json`;
       const job = await readRecord(pathname);
       if (job && job.payment_status !== 'paid') {
+        const previouslyPublic = isPublicJob(job);
         const now = new Date().toISOString();
         const updated = { ...job, status: 'active', payment_status: 'paid', stripe_payment_id: checkout.payment_intent || '', stripe_checkout_session_id: checkout.id, published_at: job.published_at || now, updated_at: now };
         await writeRecord(pathname, updated, true);
         await productEvent('job_payment_completed', { actorEmail: checkout.metadata?.session_email || '', entityType: 'job', entityId: jobId, metadata: { companyId, checkoutSessionId: checkout.id } });
         await productEvent('job_published', { actorEmail: checkout.metadata?.session_email || '', entityType: 'job', entityId: jobId, metadata: { companyId, payment: 'stripe' } });
+        if (!previouslyPublic && isPublicJob(updated)) await notifyPublishedJob(updated).catch((error) => console.error('job_alert_dispatch_failed', error.message));
       }
     }
   }

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { appUrl, assertSameOrigin, auditLog, clearSessionCookie, createSession, ensureStorage, forbidden, hashPassword, listRecords, methodNotAllowed, passwordResetEmail, productEvent, rateLimit, readRecord, readSession, sendEmail, serverError, setSecurityHeaders, setSessionCookie, stableHash, tooManyRequests, verificationEmail, verificationLinkPayload, verifyPassword, writeRecord } from './_lib.js';
+import { publicJobAlertSettings } from './_job-alerts.js';
 
 function clean(value = '') {
   return String(value).trim();
@@ -14,7 +15,8 @@ function publicCandidate(candidate) {
     linkedin: candidate.linkedin || '',
     resume: candidate.resume || '',
     savedJobs: candidate.savedJobs || [],
-    preferences: candidate.preferences || {}
+    preferences: candidate.preferences || {},
+    jobAlerts: publicJobAlertSettings(candidate.jobAlerts)
   };
 }
 

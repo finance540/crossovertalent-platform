@@ -50,5 +50,8 @@
   ],
   "functions": {
     "api/*.js": { "maxDuration": 10 }
-  }
+  },
+  "crons": [
+    { "path": "/api/job-alerts?route=dispatch", "schedule": "0 9 * * *" }
+  ]
 }

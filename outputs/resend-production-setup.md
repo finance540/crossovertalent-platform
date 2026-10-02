@@ -112,6 +112,18 @@ Pass criteria:
 - Links point to production domain.
 - Email content has no sensitive token leakage.
 
+## Automated Job Alerts
+
+Automated alerts use the existing email provider settings and the Vercel Cron entry in `vercel.json`.
+
+1. Set `RESEND_API_KEY` and `RESEND_FROM_EMAIL` (or `EMAIL_FROM`) in the Vercel environment that will send alerts. The sending address must use a verified Resend domain.
+2. Generate a separate `CRON_SECRET` with `openssl rand -base64 32` and add it to the same Vercel environment. Keep it server-side; the scheduled route rejects requests without a matching bearer token.
+3. Deploy the project with the cron entry enabled. Vercel Cron runs on Production deployments and calls `/api/job-alerts?route=dispatch` every day at 09:00 UTC to process daily and weekly digests. Instant alerts are sent when a matching public job is published.
+4. Sign in as a verified candidate, open **Preferences**, choose sectors, locations, seniority levels, and a delivery frequency, then save the alert settings.
+5. In Preview or Staging, publish a job that matches a test candidate and confirm a message arrives. Publish a non-matching job and confirm no message is sent. Test digest processing with an authorized request to the scheduled route, then confirm the email's unsubscribe link asks for confirmation before changing the subscription.
+
+Candidates can pause alerts in Preferences. An unsubscribe link disables the current subscription after its confirmation form is submitted. A missing or invalid provider key leaves alerts queued for scheduled retry and is recorded in the email audit log.
+
 ## Step 7 - Test Email Failure Handling
 
 In a non-production environment:
@@ -130,4 +142,3 @@ Pass criteria:
 ## Release Gate
 
 Current status: **BLOCKED until Resend setup and tests pass.**
-
