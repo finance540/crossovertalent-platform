@@ -59,8 +59,37 @@ export function isApproved(record = {}) {
   return moderationStatus(record) === 'approved';
 }
 
+export const JOB_STATUSES = ['draft', 'active', 'closed', 'expired'];
+
+export function isJobExpired(job = {}, now = Date.now()) {
+  return Boolean(job.expires_at) && Date.parse(job.expires_at) <= now;
+}
+
+export function jobLifecycleStatus(job = {}) {
+  if (job.status === 'active' && isJobExpired(job)) return 'expired';
+  return JOB_STATUSES.includes(job.status) ? job.status : 'closed';
+}
+
+export function resolveJobExpiry(value = '', current = '') {
+  const text = String(value || '').trim();
+  if (!text) return { expires_at: '' };
+  if (current && text === current.slice(0, 10)) return { expires_at: current };
+  const expires_at = `${text}T23:59:59.999Z`;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text) || Number.isNaN(Date.parse(expires_at))) return { error: 'Enter the expiry date as YYYY-MM-DD' };
+  if (Date.parse(expires_at) <= Date.now()) return { error: 'Choose an expiry date in the future' };
+  return { expires_at };
+}
+
+export function jobPublishedAt(job = {}) {
+  return job.published_at || job.created_at || '';
+}
+
+export function hiddenEmployerCompanyIds(accounts = []) {
+  return new Set(accounts.filter((account) => account.role === 'employer' && account.companyId && (account.disabled || ['rejected', 'suspended'].includes(employerStatus(account)))).map((account) => account.companyId));
+}
+
 export function isPublicJob(job = {}) {
-  return job.recordType === 'job' && job.schemaVersion >= 2 && job.status === 'active' && isApproved(job) && !isProductionSmokeRecord(job);
+  return job.recordType === 'job' && job.schemaVersion >= 2 && jobLifecycleStatus(job) === 'active' && isApproved(job) && !isProductionSmokeRecord(job);
 }
 
 export function employerStatus(account = {}) {

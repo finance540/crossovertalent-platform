@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { EMPLOYER_STATUSES, IMPACT_SECTORS, MODERATION_STATUSES, allowAdminSelfRegistration, appUrl, assertSameOrigin, auditLog, clearSessionCookie, createSession, employerStatus, ensureStorage, forbidden, hashPassword, listRecords, methodNotAllowed, moderationStatus, passwordResetEmail, productEvent, rateLimit, readRecord, readSession, sendEmail, serverError, setSecurityHeaders, setSessionCookie, stableHash, tooManyRequests, verificationEmail, verificationLinkPayload, verifyPassword, writeRecord } from './_lib.js';
+import { EMPLOYER_STATUSES, IMPACT_SECTORS, JOB_STATUSES, MODERATION_STATUSES, allowAdminSelfRegistration, appUrl, assertSameOrigin, auditLog, clearSessionCookie, createSession, employerStatus, ensureStorage, forbidden, hashPassword, jobLifecycleStatus, listRecords, methodNotAllowed, moderationStatus, passwordResetEmail, productEvent, rateLimit, readRecord, readSession, resolveJobExpiry, sendEmail, serverError, setSecurityHeaders, setSessionCookie, stableHash, tooManyRequests, verificationEmail, verificationLinkPayload, verifyPassword, writeRecord } from './_lib.js';
 
 function clean(value = '') {
   return String(value).trim();
@@ -48,7 +48,7 @@ async function adminMetrics() {
     .filter(Boolean);
   const serverErrors = auditLogs.filter((item) => item.event === 'server.error').length;
   return {
-    activeJobs: jobs.filter((job) => job.status === 'active').length,
+    activeJobs: jobs.filter((job) => jobLifecycleStatus(job) === 'active').length,
     totalJobs: jobs.length,
     applications: applications.length,
     candidates: candidates.length,
@@ -92,7 +92,6 @@ async function adminMetrics() {
 }
 
 const CONTENT_TYPES = ['job', 'company', 'review', 'salary'];
-const ADMIN_JOB_STATUSES = ['active', 'closed'];
 const JOB_TYPES = ['Full-time', 'Part-time', 'Contract', 'Internship'];
 const LEVELS = ['Associate', 'Manager', 'Senior Manager', 'Director', 'Executive'];
 
@@ -166,11 +165,14 @@ async function buildContent(type, fields, existing, admin) {
     if (!JOB_TYPES.includes(clean(fields.type))) throw new ContentError('Choose a valid work type');
     if (!LEVELS.includes(clean(fields.experience))) throw new ContentError('Choose a valid experience level');
     const status = clean(fields.status) || existing?.status || 'active';
-    if (!ADMIN_JOB_STATUSES.includes(status)) throw new ContentError('Choose a valid job status');
+    if (!JOB_STATUSES.includes(status)) throw new ContentError('Choose a valid job status');
+    const expiry = resolveJobExpiry(fields.expiresAt, existing?.expires_at);
+    if (expiry.error) throw new ContentError(expiry.error);
+    const publishedAt = status === 'active' ? (existing?.status === 'active' && existing.published_at ? existing.published_at : now) : existing?.published_at || '';
     const companyId = clean(fields.companyId);
     const company = await companyName(companyId);
     if (!company) throw new ContentError('Choose an existing company for this job');
-    return { ...base, recordType: 'job', schemaVersion: 2, id: existing?.id || randomUUID(), companyId, company, title: clean(fields.title), department: clean(fields.department), location: clean(fields.location), type: clean(fields.type), salary: clean(fields.salary), sector: validSector(fields.sector), experience: clean(fields.experience), impactArea: clean(fields.impactArea), description: clean(fields.description), status };
+    return { ...base, recordType: 'job', schemaVersion: 2, id: existing?.id || randomUUID(), companyId, company, title: clean(fields.title), department: clean(fields.department), location: clean(fields.location), type: clean(fields.type), salary: clean(fields.salary), sector: validSector(fields.sector), experience: clean(fields.experience), impactArea: clean(fields.impactArea), description: clean(fields.description), status, expires_at: expiry.expires_at, published_at: publishedAt };
   }
   if (type === 'review') {
     required(fields, ['company', 'sector', 'role', 'location', 'rating', 'headline', 'pros', 'cons']);

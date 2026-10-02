@@ -36,6 +36,7 @@ CI: `.github/workflows/release-candidate.yml` runs lint, typecheck, test, build 
 - `api/salary-signals.js` – salary signals + privacy-thresholded aggregates.
 - `api/candidate.js`, `api/auth.js`, `api/admin.js` – job seeker, employer and admin auth/dashboards.
 - Admin content tools: `PATCH /api/admin` with `action: 'content-save'` (create/edit `job` | `company` | `review` | `salary`) or `action: 'content-moderate'`. Every record carries `moderation_status` (`approved` | `pending` | `rejected`; missing = `approved` for legacy data) and the public APIs only return approved records. UI: "Marketplace content" panel at the top of `/?admin=1`.
+- Job lifecycle: `status` is `draft` | `active` (shown as Published) | `closed`, plus optional `expires_at` (end of day UTC); an active job past `expires_at` resolves to `expired`. `isPublicJob()` in `api/_lib.js` is the single public-visibility rule (published, not expired, approved moderation, not a smoke record); `/api/jobs?public=1` and `/api/companies` also hide jobs from suspended/rejected employers, and `/api/applications` only accepts public jobs.
 - `api/assist.js` – AI assistant and document parsing. `api/ops.js` – health/readiness/feedback/telemetry.
 - `outputs/*.md` – historical audits, roadmaps and ticket lists (e.g. `version-1.1-prioritized-backlog.md`, `p1-product-gap-tickets.md`, `production-readiness-ticket-list.md`).
 

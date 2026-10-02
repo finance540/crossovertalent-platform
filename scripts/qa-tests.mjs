@@ -50,6 +50,11 @@ includes('html', /twitter:card/, 'Twitter card metadata exists');
 includes('html', /application\/ld\+json/, 'structured data exists');
 includes('html', /id="pricing"/, 'pricing placeholders are integrated');
 includes('html', /id="faq"/, 'FAQ content is integrated');
+includes('html', /Approved partner wall/, 'trust section has a client logo content slot');
+includes('html', /Consent-cleared voices/, 'trust section has a candidate testimonial content slot');
+includes('html', /Evidence-led stories/, 'trust section has a case study content slot');
+includes('html', /Verified outcomes/, 'trust section has a placement metric content slot');
+assert.doesNotMatch(files.html, />Coming soon</, 'trust section has no permanent coming soon state');
 includes('html', /href="\/privacy\.html"/, 'privacy link exists');
 includes('ops', /applicationStatusChanged/, 'commercial email templates exist');
 includes('vercel', /sitemap\.xml/, 'sitemap route exists');
@@ -196,6 +201,11 @@ includes('reviews', /!item\.hidden && isApproved\(item\)/, 'public reviews requi
 includes('salaries', /isApproved\(item\)/, 'public salary signals require approved moderation');
 includes('admin', /action === 'content-save' \|\| action === 'content-moderate'/, 'admins can create, edit and moderate marketplace content');
 includes('app', /function adminContentPanel/, 'admin dashboard has a marketplace content section');
+includes('lib', /export const JOB_STATUSES = \['draft', 'active', 'closed', 'expired'\]/, 'jobs support draft, published, closed and expired states');
+includes('lib', /jobLifecycleStatus\(job\) === 'active'/, 'public jobs exclude drafts and expired roles');
+includes('jobs', /hiddenEmployerCompanyIds\(accounts\)/, 'public jobs exclude suspended or rejected employers');
+includes('applications', /isPublicJob\(item\)/, 'applications only accept publicly visible jobs');
+includes('html', /id="job-draft"/, 'employers can save a job as a draft');
 includes('app', /data-empty-action="clear-filters"|'clear-filters', 'Clear filters'/, 'filtered empty states offer clear filters');
 includes('app', /function clearPublicFilters/, 'clear filters resets marketplace filters');
 

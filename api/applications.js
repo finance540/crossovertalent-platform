@@ -1,4 +1,4 @@
-import { appUrl, assertSameOrigin, auditLog, ensureStorage, forbidden, listRecords, methodNotAllowed, productEvent, rateLimit, readRecord, readSession, requireApprovedEmployerSession, requireSession, sendEmail, serverError, setSecurityHeaders, stableHash, tooManyRequests, writeRecord } from './_lib.js';
+import { appUrl, assertSameOrigin, auditLog, ensureStorage, forbidden, isPublicJob, listRecords, methodNotAllowed, productEvent, rateLimit, readRecord, readSession, requireApprovedEmployerSession, requireSession, sendEmail, serverError, setSecurityHeaders, stableHash, tooManyRequests, writeRecord } from './_lib.js';
 
 function clean(value = '') {
   return String(value).trim();
@@ -21,7 +21,7 @@ export default async function handler(request, response) {
       if (applicantName.length > 120 || applicantEmail.length > 254 || phone.length > 60 || location.length > 120 || linkedin.length > 500 || coverLetter.length > 5000 || cvText.length > 8000 || revisedCv.length > 8000 || linkedinNote.length > 500) return response.status(400).json({ error: 'One or more fields are too long' });
       if (linkedin && !/^https?:\/\//i.test(linkedin.trim())) return response.status(400).json({ error: 'Portfolio link must start with http:// or https://' });
       if (!(await rateLimit(request, `apply:${jobId || 'missing'}`, 10, 60 * 60 * 1000))) return tooManyRequests(response);
-      const jobs = (await listRecords('companies/')).filter((item) => item.recordType === 'job' && item.id === jobId && item.status === 'active');
+      const jobs = (await listRecords('companies/')).filter((item) => item.id === jobId && isPublicJob(item));
       if (!jobs.length) return response.status(404).json({ error: 'This role is no longer accepting applications' });
       const job = jobs[0];
       const applicationId = stableHash(`${job.id}:${applicantEmail}`).slice(0, 32);
