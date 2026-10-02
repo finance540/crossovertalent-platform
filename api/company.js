@@ -1,4 +1,4 @@
-import { IMPACT_SECTORS, allowStorageFallback, auditLog, assertSameOrigin, configuredSupabaseUrl, employerStatus, ensureStorage, forbidden, isApproved, isProductionSmokeRecord, isPublicJob, listRecords, methodNotAllowed, productEvent, readRecord, requireApprovedEmployerSession, serverError, setSecurityHeaders, uploadPrivateFile, writeRecord } from './_lib.js';
+import { IMPACT_SECTORS, allowStorageFallback, auditLog, assertSameOrigin, configuredSupabaseUrl, ensureStorage, forbidden, hiddenEmployerCompanyIds, isApproved, isProductionSmokeRecord, isPublicJob, jobPublishedAt, listRecords, methodNotAllowed, productEvent, readRecord, requireApprovedEmployerSession, serverError, setSecurityHeaders, uploadPrivateFile, writeRecord } from './_lib.js';
 import { randomUUID } from 'node:crypto';
 
 const MAX_LOGO_BYTES = 750_000;
@@ -24,7 +24,6 @@ function publicProfile(profile = {}, session = {}) {
 }
 
 const MISSION_SUMMARY_LENGTH = 220;
-const HIDDEN_EMPLOYER_STATUSES = ['rejected', 'suspended'];
 
 function missionSummary(text = '') {
   const value = clean(text).replace(/\s+/g, ' ');
@@ -58,7 +57,7 @@ function publicCompany(companyId, profile, jobs) {
 
 async function publicCompanies() {
   const [records, accounts] = await Promise.all([listRecords('companies/'), listRecords('accounts/')]);
-  const hiddenCompanyIds = new Set(accounts.filter((account) => account.disabled || HIDDEN_EMPLOYER_STATUSES.includes(employerStatus(account))).map((account) => account.companyId));
+  const hiddenCompanyIds = hiddenEmployerCompanyIds(accounts);
   const profiles = new Map();
   const jobsByCompany = new Map();
   records.forEach((record) => {
@@ -68,7 +67,7 @@ async function publicCompanies() {
   });
   const companyIds = new Set([...profiles.keys(), ...jobsByCompany.keys()]);
   const companies = [...companyIds].map((companyId) => {
-    const jobs = (jobsByCompany.get(companyId) || []).sort((a, b) => b.created_at.localeCompare(a.created_at));
+    const jobs = (jobsByCompany.get(companyId) || []).sort((a, b) => jobPublishedAt(b).localeCompare(jobPublishedAt(a)));
     return { company: publicCompany(companyId, profiles.get(companyId), jobs), jobs };
   });
   return companies

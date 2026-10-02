@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { IMPACT_SECTORS, assertSameOrigin, deleteRecord, ensureStorage, forbidden, isPublicJob, listRecords, methodNotAllowed, productEvent, rateLimit, readRecord, requireApprovedEmployerSession, serverError, setSecurityHeaders, tooManyRequests, writeRecord } from './_lib.js';
+import { IMPACT_SECTORS, assertSameOrigin, deleteRecord, ensureStorage, forbidden, hiddenEmployerCompanyIds, isJobExpired, isPublicJob, jobPublishedAt, listRecords, methodNotAllowed, productEvent, rateLimit, readRecord, requireApprovedEmployerSession, resolveJobExpiry, serverError, setSecurityHeaders, tooManyRequests, writeRecord } from './_lib.js';
 
 export default async function handler(request, response) {
   try {
@@ -7,7 +7,9 @@ export default async function handler(request, response) {
     setSecurityHeaders(response);
     ensureStorage();
     if (request.method === 'GET' && request.query.public === '1') {
-      const jobs = (await listRecords('companies/')).filter((item) => isPublicJob(item) && (!request.query.company || item.companyId === request.query.company)).sort((a, b) => b.created_at.localeCompare(a.created_at));
+      const [records, accounts] = await Promise.all([listRecords('companies/'), listRecords('accounts/')]);
+      const hiddenCompanyIds = hiddenEmployerCompanyIds(accounts);
+      const jobs = records.filter((item) => isPublicJob(item) && !hiddenCompanyIds.has(item.companyId) && (!request.query.company || item.companyId === request.query.company)).sort((a, b) => jobPublishedAt(b).localeCompare(jobPublishedAt(a)));
       return response.json({ jobs });
     }
     const session = await requireApprovedEmployerSession(request, response);
@@ -21,31 +23,39 @@ export default async function handler(request, response) {
       return response.json({ jobs: jobs.sort((a, b) => b.created_at.localeCompare(a.created_at)).map((job) => ({ ...job, application_count: counts[job.id] || 0 })) });
     }
     if (request.method === 'POST') {
-      const { title = '', department = '', location = '', type = '', salary = '', sector = 'Climate', experience = 'Manager', impactArea = '', description = '', sourceAttachment = null, sourceText = '', aiInputs = null } = request.body || {};
+      const { title = '', department = '', location = '', type = '', salary = '', sector = 'Climate', experience = 'Manager', impactArea = '', description = '', sourceAttachment = null, sourceText = '', aiInputs = null, status = 'active', expiresAt = '' } = request.body || {};
       if (![title, department, location, type, description].every((value) => typeof value === 'string' && value.trim())) return response.status(400).json({ error: 'Complete all required fields' });
       if (!IMPACT_SECTORS.includes(sector)) return response.status(400).json({ error: 'Choose a valid focus sector' });
       if (title.length > 120 || department.length > 80 || location.length > 120 || salary.length > 80 || sector.length > 80 || experience.length > 80 || impactArea.length > 160 || description.length > 8000 || sourceText.length > 8000) return response.status(400).json({ error: 'One or more fields are too long' });
-      const job = { recordType: 'job', schemaVersion: 2, id: randomUUID(), companyId: session.companyId, company: session.company, title: title.trim(), department: department.trim(), location: location.trim(), type: type.trim(), salary: salary.trim(), sector: sector.trim(), experience: experience.trim(), impactArea: impactArea.trim(), description: description.trim(), sourceAttachment, sourceText: sourceText.trim(), aiInputs, status: 'active', created_at: new Date().toISOString() };
+      if (!['active', 'draft'].includes(status)) return response.status(400).json({ error: 'New jobs can be published or saved as a draft' });
+      const expiry = resolveJobExpiry(expiresAt);
+      if (expiry.error) return response.status(400).json({ error: expiry.error });
+      const now = new Date().toISOString();
+      const job = { recordType: 'job', schemaVersion: 2, id: randomUUID(), companyId: session.companyId, company: session.company, title: title.trim(), department: department.trim(), location: location.trim(), type: type.trim(), salary: salary.trim(), sector: sector.trim(), experience: experience.trim(), impactArea: impactArea.trim(), description: description.trim(), sourceAttachment, sourceText: sourceText.trim(), aiInputs, status, expires_at: expiry.expires_at, published_at: status === 'active' ? now : '', created_at: now };
       await writeRecord(`${jobPrefix}${job.id}.json`, job);
       await productEvent('job_posted', { actorEmail: session.email, entityType: 'job', entityId: job.id, metadata: { companyId: session.companyId, sector: job.sector, location: job.location, status: job.status } });
-      await productEvent('job_published', { actorEmail: session.email, entityType: 'job', entityId: job.id, metadata: { companyId: session.companyId, sector: job.sector, location: job.location } });
+      if (status === 'active') await productEvent('job_published', { actorEmail: session.email, entityType: 'job', entityId: job.id, metadata: { companyId: session.companyId, sector: job.sector, location: job.location } });
       return response.status(201).json({ job });
     }
     if (request.method === 'PATCH') {
-      const { id, status, title, department, location, type, salary = '', sector = 'Climate', experience = 'Manager', impactArea = '', description, sourceAttachment = null, sourceText = '', aiInputs = null } = request.body || {};
+      const { id, status, title, department, location, type, salary = '', sector = 'Climate', experience = 'Manager', impactArea = '', description, sourceAttachment = null, sourceText = '', aiInputs = null, expiresAt = '' } = request.body || {};
       const pathname = `${jobPrefix}${id}.json`;
       const job = await readRecord(pathname);
       if (!job) return response.status(404).json({ error: 'Job not found' });
       if (status) {
-        if (!['active', 'closed'].includes(status)) return response.status(400).json({ error: 'Invalid job status' });
-        await writeRecord(pathname, { ...job, status, updated_at: new Date().toISOString() }, true);
+        if (!['draft', 'active', 'closed'].includes(status)) return response.status(400).json({ error: 'Invalid job status' });
+        const now = new Date().toISOString();
+        const publishing = status === 'active' ? { published_at: job.status === 'active' && job.published_at ? job.published_at : now, expires_at: isJobExpired(job) ? '' : job.expires_at || '' } : {};
+        await writeRecord(pathname, { ...job, status, ...publishing, updated_at: now }, true);
         await productEvent(status === 'active' ? 'job_published' : 'job_closed', { actorEmail: session.email, entityType: 'job', entityId: job.id, metadata: { companyId: session.companyId, previousStatus: job.status, status } });
         return response.json({ ok: true });
       }
       if (![title, department, location, type, description].every((value) => typeof value === 'string' && value.trim())) return response.status(400).json({ error: 'Complete all required fields' });
       if (!IMPACT_SECTORS.includes(sector)) return response.status(400).json({ error: 'Choose a valid focus sector' });
       if (title.length > 120 || department.length > 80 || location.length > 120 || salary.length > 80 || sector.length > 80 || experience.length > 80 || impactArea.length > 160 || description.length > 8000 || sourceText.length > 8000) return response.status(400).json({ error: 'One or more fields are too long' });
-      const updated = { ...job, schemaVersion: 2, title: title.trim(), department: department.trim(), location: location.trim(), type: type.trim(), salary: salary.trim(), sector: sector.trim(), experience: experience.trim(), impactArea: impactArea.trim(), description: description.trim(), sourceAttachment, sourceText: sourceText.trim(), aiInputs, updated_at: new Date().toISOString() };
+      const expiry = resolveJobExpiry(expiresAt, job.expires_at);
+      if (expiry.error) return response.status(400).json({ error: expiry.error });
+      const updated = { ...job, schemaVersion: 2, expires_at: expiry.expires_at, title: title.trim(), department: department.trim(), location: location.trim(), type: type.trim(), salary: salary.trim(), sector: sector.trim(), experience: experience.trim(), impactArea: impactArea.trim(), description: description.trim(), sourceAttachment, sourceText: sourceText.trim(), aiInputs, updated_at: new Date().toISOString() };
       await writeRecord(pathname, updated, true);
       return response.json({ job: updated });
     }

@@ -196,6 +196,11 @@ includes('reviews', /!item\.hidden && isApproved\(item\)/, 'public reviews requi
 includes('salaries', /isApproved\(item\)/, 'public salary signals require approved moderation');
 includes('admin', /action === 'content-save' \|\| action === 'content-moderate'/, 'admins can create, edit and moderate marketplace content');
 includes('app', /function adminContentPanel/, 'admin dashboard has a marketplace content section');
+includes('lib', /export const JOB_STATUSES = \['draft', 'active', 'closed', 'expired'\]/, 'jobs support draft, published, closed and expired states');
+includes('lib', /jobLifecycleStatus\(job\) === 'active'/, 'public jobs exclude drafts and expired roles');
+includes('jobs', /hiddenEmployerCompanyIds\(accounts\)/, 'public jobs exclude suspended or rejected employers');
+includes('applications', /isPublicJob\(item\)/, 'applications only accept publicly visible jobs');
+includes('html', /id="job-draft"/, 'employers can save a job as a draft');
 includes('app', /data-empty-action="clear-filters"|'clear-filters', 'Clear filters'/, 'filtered empty states offer clear filters');
 includes('app', /function clearPublicFilters/, 'clear filters resets marketplace filters');
 

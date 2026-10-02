@@ -534,7 +534,7 @@ function bindPagination(scope = document) {
 }
 
 function renderOverview() {
-  const activeJobs = state.jobs.filter((job) => job.status === 'active').length;
+  const activeJobs = state.jobs.filter((job) => jobLifecycle(job) === 'active').length;
   const interviewing = state.applications.filter((item) => item.status === 'interview').length;
   const hired = state.applications.filter((item) => item.status === 'hired').length;
   const recent = state.applications.slice(0, 5);
@@ -557,7 +557,7 @@ function renderOverview() {
 }
 
 function jobTable(jobs) {
-  return `<div class="table-wrap"><table><thead><tr><th>Role</th><th>Sector</th><th>Status</th><th>Applications</th><th>Published</th><th>Actions</th></tr></thead><tbody>${jobs.map((job) => `<tr><td class="title-cell"><strong>${escapeHtml(job.title)}</strong><small>${escapeHtml(job.department)} · ${escapeHtml(job.location)} · ${escapeHtml(job.type)}</small></td><td><span class="sector-pill">${escapeHtml(job.sector || 'Impact')}</span></td><td><span class="status ${job.status}">${job.status === 'active' ? 'Published' : 'Unpublished'}</span></td><td>${job.application_count}</td><td>${dateLabel(job.created_at)}</td><td><div class="row-actions"><button class="mini-button" data-job-share="${job.id}">Share</button><button class="mini-button" data-job-edit="${job.id}">Edit</button><button class="mini-button" data-job-toggle="${job.id}" data-next="${job.status === 'active' ? 'closed' : 'active'}">${job.status === 'active' ? 'Unpublish' : 'Publish'}</button><button class="mini-button" data-job-delete="${job.id}">Delete</button></div></td></tr>`).join('')}</tbody></table></div>`;
+  return `<div class="table-wrap"><table><thead><tr><th>Role</th><th>Sector</th><th>Status</th><th>Applications</th><th>Published</th><th>Actions</th></tr></thead><tbody>${jobs.map((job) => `<tr><td class="title-cell"><strong>${escapeHtml(job.title)}</strong><small>${escapeHtml(job.department)} · ${escapeHtml(job.location)} · ${escapeHtml(job.type)}</small></td><td><span class="sector-pill">${escapeHtml(job.sector || 'Impact')}</span></td><td><span class="status ${jobLifecycle(job)}">${JOB_STATUS_LABELS[jobLifecycle(job)]}</span>${job.expires_at ? `<br><small>Until ${dateLabel(job.expires_at)}</small>` : ''}</td><td>${job.application_count}</td><td>${dateLabel(job.created_at)}</td><td><div class="row-actions"><button class="mini-button" data-job-share="${job.id}">Share</button><button class="mini-button" data-job-edit="${job.id}">Edit</button><button class="mini-button" data-job-toggle="${job.id}" data-next="${jobLifecycle(job) === 'active' ? 'closed' : 'active'}">${jobLifecycle(job) === 'active' ? 'Unpublish' : 'Publish'}</button><button class="mini-button" data-job-delete="${job.id}">Delete</button></div></td></tr>`).join('')}</tbody></table></div>`;
 }
 
 function renderJobs() {
@@ -790,6 +790,8 @@ function openJobDialog(job = null) {
   $('#job-dialog-eyebrow').textContent = job ? 'Update role' : 'Create a role';
   $('#job-dialog-title').textContent = job ? 'Edit job' : 'Post a new job';
   $('#job-submit').textContent = job ? 'Save changes' : 'Publish job';
+  $('#job-draft').classList.toggle('hidden', Boolean(job));
+  form.elements.expiresAt.value = (job?.expires_at || '').slice(0, 10);
   if (job) ['title', 'department', 'location', 'type', 'salary', 'sector', 'experience', 'impactArea', 'description'].forEach((field) => { form.elements[field].value = job[field] || ''; });
   form.elements.sourceText.value = job?.sourceText || '';
   form.elements.sourceAttachment.value = job?.sourceAttachment ? JSON.stringify(job.sourceAttachment) : '';
@@ -810,7 +812,7 @@ async function updateJob(id, status) {
   try {
     await api('/api/jobs', { method: 'PATCH', body: JSON.stringify({ id, status }) });
     await loadDashboard();
-    toast(status === 'active' ? 'Job reopened' : 'Job closed');
+    toast(status === 'active' ? 'Job published' : 'Job closed');
   } catch (error) { toast(error.message, true); }
 }
 
@@ -1308,6 +1310,7 @@ function renderAdminDashboard() {
 const IMPACT_SECTOR_OPTIONS = ['Climate', 'Impact Investment', 'Public Healthcare', 'Agriculture', 'Water', 'Education', 'Clean Energy', 'Philanthropic Foundation', 'Circular Economy', 'CSR', 'ESG Consulting'];
 const LEVEL_OPTIONS = ['Associate', 'Manager', 'Senior Manager', 'Director', 'Executive'];
 const MODERATION_LABELS = { approved: 'Approved', pending: 'Pending', rejected: 'Rejected' };
+const JOB_STATUS_LABELS = { draft: 'Draft', active: 'Published', closed: 'Closed', expired: 'Expired' };
 
 const ADMIN_CONTENT = {
   job: {
@@ -1316,8 +1319,8 @@ const ADMIN_CONTENT = {
     records: (data) => data.jobs || [],
     id: (item) => item.id,
     title: (item) => item.title,
-    detail: (item) => `${item.company} · ${item.location} · ${item.status === 'active' ? 'Published' : 'Closed'}`,
-    isPublic: (item) => item.status === 'active' && moderationLabel(item) === 'approved',
+    detail: (item) => `${item.company} · ${item.location} · ${JOB_STATUS_LABELS[jobLifecycle(item)]}${item.expires_at ? ` until ${item.expires_at.slice(0, 10)}` : ''}`,
+    isPublic: (item) => jobLifecycle(item) === 'active' && moderationLabel(item) === 'approved',
     fields: [
       ['companyId', 'Company', 'company', true],
       ['title', 'Job title', 'text', true],
@@ -1328,7 +1331,8 @@ const ADMIN_CONTENT = {
       ['sector', 'Focus sector', IMPACT_SECTOR_OPTIONS],
       ['experience', 'Experience level', LEVEL_OPTIONS],
       ['impactArea', 'Impact area', 'text'],
-      ['status', 'Job status', [['active', 'Published'], ['closed', 'Closed']]],
+      ['status', 'Job status', Object.entries(JOB_STATUS_LABELS)],
+      ['expiresAt', 'Expires on', 'date'],
       ['description', 'About the role', 'textarea', true]
     ]
   },
@@ -1394,6 +1398,11 @@ const ADMIN_CONTENT = {
   }
 };
 
+function jobLifecycle(job = {}) {
+  if (job.status === 'active' && job.expires_at && Date.parse(job.expires_at) <= Date.now()) return 'expired';
+  return JOB_STATUS_LABELS[job.status] ? job.status : 'closed';
+}
+
 function moderationLabel(item = {}) {
   return MODERATION_LABELS[item.moderation_status] ? item.moderation_status : 'approved';
 }
@@ -1438,6 +1447,7 @@ function openAdminContentDialog(id = '') {
     if (!item) return defaults[name] ?? '';
     if (name === 'sectors') return (item.sectors?.length ? item.sectors : [item.sector]).filter(Boolean).join(', ');
     if (name === 'mission') return item.mission || item.description || '';
+    if (name === 'expiresAt') return (item.expires_at || '').slice(0, 10);
     return item[name] ?? '';
   };
   const fields = config.fields.map((field) => field[2] === 'company' && item ? `<label>${field[1]}<input value="${escapeHtml(item.company)}" disabled /></label>` : adminFieldInput(field, valueFor(field[0]), data)).join('');
@@ -1543,26 +1553,29 @@ $('#admin-content-form').addEventListener('submit', (event) => {
 
 $('#job-form').addEventListener('submit', async (event) => {
   event.preventDefault();
-  const data = formObject(event.currentTarget);
+  const form = event.currentTarget;
+  const data = formObject(form);
   data.sourceAttachment = parseJsonField(data.sourceAttachment);
   data.aiInputs = parseJsonField(data.aiInputs);
-  const button = event.currentTarget.querySelector('[type="submit"]');
+  const button = event.submitter || $('#job-submit');
   button.disabled = true;
   try {
     const editing = Boolean(data.id);
+    if (!editing) data.status = event.submitter?.value === 'draft' ? 'draft' : 'active';
     await api('/api/jobs', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(data) });
-    event.currentTarget.reset();
+    form.reset();
     $('#job-dialog').close();
     state.view = 'jobs';
     await loadDashboard();
-    toast(editing ? 'Job updated' : 'Your job is live');
+    toast(editing ? 'Job updated' : data.status === 'draft' ? 'Draft saved. Publish it when you are ready.' : 'Your job is live');
   } catch (error) { toast(error.message, true); }
   finally { button.disabled = false; }
 });
 
 $('#apply-form').addEventListener('submit', async (event) => {
   event.preventDefault();
-  const data = formObject(event.currentTarget);
+  const form = event.currentTarget;
+  const data = formObject(form);
   data.cvAttachment = parseJsonField(data.cvAttachment);
   if (state.candidate) {
     data.name = data.name || state.candidate.name;
@@ -1570,7 +1583,7 @@ $('#apply-form').addEventListener('submit', async (event) => {
     data.linkedin = data.linkedin || state.candidate.linkedin || '';
     data.cvText = data.cvText || state.candidate.resume || '';
   }
-  const button = event.currentTarget.querySelector('[type="submit"]');
+  const button = form.querySelector('[type="submit"]');
   button.disabled = true;
   try {
     await api('/api/applications', { method: 'POST', body: JSON.stringify(data) });
@@ -1581,7 +1594,7 @@ $('#apply-form').addEventListener('submit', async (event) => {
         state.candidateApplications = refreshed.applications || [];
       }
     }
-    event.currentTarget.reset();
+    form.reset();
     $('#apply-dialog').close();
     toast(state.candidate ? 'Application submitted. Track it from your dashboard.' : 'Application submitted. Good luck!');
   } catch (error) { toast(error.message, true); }
@@ -1699,12 +1712,13 @@ $('#revise-cv').addEventListener('click', async () => {
 
 $('#review-form').addEventListener('submit', async (event) => {
   event.preventDefault();
-  const data = Object.fromEntries(new FormData(event.currentTarget));
-  const button = event.currentTarget.querySelector('[type="submit"]');
+  const form = event.currentTarget;
+  const data = Object.fromEntries(new FormData(form));
+  const button = form.querySelector('[type="submit"]');
   button.disabled = true;
   try {
     await api('/api/reviews', { method: data.id ? 'PATCH' : 'POST', body: JSON.stringify(data) });
-    event.currentTarget.reset();
+    form.reset();
     $('#review-dialog').close();
     state.publicTab = 'reviews';
     await loadPublicJobs();
@@ -1716,12 +1730,13 @@ $('#review-form').addEventListener('submit', async (event) => {
 
 $('#salary-form').addEventListener('submit', async (event) => {
   event.preventDefault();
-  const data = formObject(event.currentTarget);
-  const button = event.currentTarget.querySelector('[type="submit"]');
+  const form = event.currentTarget;
+  const data = formObject(form);
+  const button = form.querySelector('[type="submit"]');
   button.disabled = true;
   try {
     await api('/api/salary-signals', { method: 'POST', body: JSON.stringify(data) });
-    event.currentTarget.reset();
+    form.reset();
     $('#salary-dialog').close();
     state.publicTab = 'salaries';
     await loadPublicJobs();
