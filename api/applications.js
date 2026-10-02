@@ -1,4 +1,6 @@
 import { appUrl, assertSameOrigin, auditLog, ensureStorage, forbidden, isPublicJob, listRecords, methodNotAllowed, productEvent, rateLimit, readRecord, readSession, requireApprovedEmployerSession, requireSession, sendEmail, serverError, setSecurityHeaders, stableHash, tooManyRequests, writeRecord } from './_lib.js';
+import { billingEnforced, companyHasCandidateAccess } from './_billing.js';
+import { stripeConfigured } from './payments.js';
 
 function clean(value = '') {
   return String(value).trim();
@@ -64,6 +66,8 @@ export default async function handler(request, response) {
     const employerSession = await requireApprovedEmployerSession(request, response);
     if (!employerSession) return;
     const prefix = `companies/${employerSession.companyId}/applications/`;
+    if (billingEnforced() && !stripeConfigured()) return response.status(503).json({ error: 'Stripe test-mode billing must be configured before accessing full candidate details', billingRequired: true });
+    if (billingEnforced() && !(await companyHasCandidateAccess(employerSession.companyId))) return response.status(402).json({ error: 'An active subscription or paid job posting is required to access full candidate details', upgradeRequired: true });
     if (request.method === 'GET') {
       const applications = (await listRecords(prefix)).sort((a, b) => b.created_at.localeCompare(a.created_at));
       return response.json({ applications });

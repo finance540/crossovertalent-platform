@@ -196,7 +196,7 @@
           <article><h3>How is candidate data handled?</h3><p>Candidate data is used for application and matching workflows. Private files should remain protected and access-controlled through the production storage setup.</p></article>
           <article><h3>Can you support Japan and India hiring?</h3><p>Yes. The platform is positioned for Japan, India, and broader Asia hiring, including cross-border leadership and specialist roles.</p></article>
           <article><h3>Is Japanese-language support available?</h3><p>Japanese-language pages and bilingual workflow polish are planned. Current production content is English-first with Japan readiness placeholders.</p></article>
-          <article><h3>Are pricing and payments live?</h3><p>No. Pricing is placeholder-only for Version 1.0. Production payments should wait for the subscription entitlement layer.</p></article>
+          <article><h3>Are pricing and payments live?</h3><p>No. Public production payments are disabled. Employer subscriptions and job posting payments are being validated in Stripe test mode before any production launch.</p></article>
           <article><h3>Does AI always use OpenAI?</h3><p>Live AI works when configured. If the API key is missing or unavailable, the app shows safe fallback drafts or messages instead of breaking.</p></article>
           <article><h3>How do I get support?</h3><p>Use the Support button for feedback, bug reports, feature requests, or launch support.</p></article>
         </div>
@@ -362,6 +362,7 @@
         <button class="nav-item" data-view="company"><span>◉</span>Company</button>
         <button class="nav-item" data-view="jobs"><span>▣</span>Jobs <b id="job-count-nav">0</b></button>
         <button class="nav-item" data-view="applications"><span>♙</span>Applications <b id="application-count-nav">0</b></button>
+        <button class="nav-item" data-view="billing"><span>＄</span>Billing</button>
       </nav>
       <div class="sidebar-card"><span>PUBLIC JOB BOARD</span><p>Candidates can find every active role on your public board.</p><button id="copy-board-link">Copy board link</button></div>
       <button id="profile-button" class="profile-button"><span class="avatar">CO</span><span><strong id="profile-name">Company</strong><small id="profile-email"></small></span><span>•••</span></button>

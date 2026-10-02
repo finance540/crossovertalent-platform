@@ -1,6 +1,6 @@
 const LIVE_ORIGIN = 'https://build-me-a-simple-website-where.vercel.app';
 const MAX_UPLOAD_BYTES = 3_000_000;
-const state = { user: null, candidate: null, admin: null, adminData: null, companyProfile: null, candidateApplications: [], myReviews: [], jobs: [], applications: [], publicJobs: [], publicCompanies: null, publicReviews: [], publicSalarySignals: [], salaryAggregates: [], notifications: [], publicTab: 'jobs', adminContentType: 'job', view: 'overview', candidateView: 'overview', authMode: 'login', candidateAuthMode: 'login', adminAuthMode: 'login', search: '', candidateSearch: '', publicSearch: '', sector: '', location: '', level: '', workType: '', functionFilter: '', industry: '', pages: { jobs: 1, applications: 1, publicJobs: 1, publicReviews: 1, publicSalaries: 1, admin: 1 }, pageSize: 10 };
+const state = { user: null, candidate: null, admin: null, adminData: null, companyProfile: null, candidateApplications: [], myReviews: [], jobs: [], applications: [], billing: null, billingAccessDenied: false, publicJobs: [], publicCompanies: null, publicReviews: [], publicSalarySignals: [], salaryAggregates: [], notifications: [], publicTab: 'jobs', adminContentType: 'job', view: 'overview', candidateView: 'overview', authMode: 'login', candidateAuthMode: 'login', adminAuthMode: 'login', search: '', candidateSearch: '', publicSearch: '', sector: '', location: '', level: '', workType: '', functionFilter: '', industry: '', pages: { jobs: 1, applications: 1, publicJobs: 1, publicReviews: 1, publicSalaries: 1, admin: 1 }, pageSize: 10 };
 let liveSyncTimer;
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -552,7 +552,7 @@ function renderOverview() {
       <article class="stat-card"><div class="stat-icon green">✓</div><p>Hired</p><strong>${hired}</strong></article>
     </section>
     <section class="panel"><div class="panel-header"><div><h2>Recent applications</h2><p>Your newest candidates</p></div>${recent.length ? '<button class="text-button" data-go="applications">View all →</button>' : ''}</div>
-      ${recent.length ? applicationTable(recent) : emptyState('♙', 'Your pipeline is ready', 'Applications will appear here as candidates submit them through your public job board.', state.jobs.length ? `<a class="button subtle" href="/?jobs=1&company=${encodeURIComponent(state.user.companyId)}" target="_blank">View public board</a>` : '<button class="button primary" data-post-job>Post your first job</button>')}
+      ${state.billingAccessDenied ? emptyState('♙', 'Candidate details are locked', 'Choose an active subscription or publish a paid job posting to unlock full candidate details.', '<button class="button primary" data-go="billing">View billing plans</button>') : recent.length ? applicationTable(recent) : emptyState('♙', 'Your pipeline is ready', 'Applications will appear here as candidates submit them through your public job board.', state.jobs.length ? `<a class="button subtle" href="/?jobs=1&company=${encodeURIComponent(state.user.companyId)}" target="_blank">View public board</a>` : '<button class="button primary" data-post-job>Post your first job</button>')}
     </section>`;
 }
 
@@ -572,10 +572,53 @@ function applicationTable(applications) {
 }
 
 function renderApplications() {
+  if (state.billingAccessDenied) {
+    $('#main-content').innerHTML = `<section class="page-heading"><div><p class="eyebrow">Pipeline</p><h1>Applications</h1><p class="muted">Full candidate details are included with an active subscription or a paid job posting.</p></div></section><section class="panel billing-locked"><h2>Unlock candidate details</h2><p>Choose an employer plan or publish a one-time paid role to review applications and manage your pipeline.</p><button class="button primary" data-go="billing">View billing plans</button></section>`;
+    return;
+  }
   const applications = filtered(state.applications, ['name', 'email', 'job_title', 'status']);
   const page = paginate(applications, 'applications');
   $('#main-content').innerHTML = `<section class="page-heading"><div><p class="eyebrow">Pipeline</p><h1>Applications</h1><p class="muted">Review candidates and keep every decision visible.</p></div></section><section class="panel"><div class="panel-header"><div><h2>${applications.length} ${applications.length === 1 ? 'candidate' : 'candidates'}</h2><p>${state.search ? 'Matching your search' : 'Across every role'}</p></div></div>${applications.length ? applicationTable(page.items) + paginationControls('applications', page) : emptyState('♙', state.search ? 'No matching candidates' : 'No applications yet', state.search ? 'Try another search term.' : 'Share your public job board. New applications will arrive here automatically.')}</section>`;
   bindPagination($('#main-content'));
+}
+
+function renderBilling() {
+  const billing = state.billing || {};
+  const subscription = billing.subscription;
+  const plans = billing.plans || [];
+  const currentStatus = subscription?.active ? `${subscription.planName} · ${subscription.status}` : subscription?.status && subscription.status !== 'inactive' ? `Subscription ${subscription.status}` : 'No active subscription';
+  const featureLabels = {
+    'jobs.publish': 'Publish jobs',
+    'applications.view_full': 'Review full candidate profiles',
+    'ai.jd_generate': 'AI-assisted job descriptions',
+    'analytics.view': 'Hiring analytics',
+    'candidate.search': 'Candidate search',
+    'team.invite': 'Team access',
+    'branding.edit': 'Company branding'
+  };
+  const cards = plans.map((plan) => {
+    const limit = plan.maxActiveJobs === null ? 'Unlimited active jobs' : `Up to ${plan.maxActiveJobs} active jobs`;
+    const isCurrent = subscription?.active && subscription.planId === plan.id;
+    const disabled = !billing.billingConfigured || !plan.priceConfigured || Boolean(subscription?.active);
+    return `<article class="billing-plan${isCurrent ? ' featured' : ''}"><span>${escapeHtml(plan.name)}</span><h2>${escapeHtml(plan.name)}</h2><p>${escapeHtml(plan.description)}</p><ul><li>${limit}</li><li>${plan.teamSeats} team ${plan.teamSeats === 1 ? 'seat' : 'seats'}</li>${plan.capabilities.map((capability) => `<li>${escapeHtml(featureLabels[capability] || capability)}</li>`).join('')}</ul><p class="billing-price-note">${plan.priceConfigured ? 'Monthly price is set in the Stripe test catalog.' : 'Add this plan’s Stripe test Price ID to enable checkout.'}</p><button class="button ${isCurrent ? 'subtle' : 'primary'}" data-subscribe-plan="${escapeHtml(plan.id)}" ${disabled ? 'disabled' : ''}>${isCurrent ? 'Current plan' : 'Choose plan'}</button></article>`;
+  }).join('');
+  $('#main-content').innerHTML = `<section class="page-heading"><div><p class="eyebrow">Employer billing · test mode</p><h1>Plans and billing</h1><p class="muted">${escapeHtml(currentStatus)}${subscription?.currentPeriodEnd ? ` · Renews or ends ${dateLabel(subscription.currentPeriodEnd)}` : ''}</p></div>${subscription?.canManageBilling ? '<button class="button subtle" id="manage-billing">Manage billing</button>' : ''}</section>${billing.billingRequired && !billing.billingConfigured ? '<section class="panel billing-notice"><strong>Test checkout is not configured</strong><p>Set a Stripe test secret, webhook secret, and recurring Price IDs for the plans to enable subscriptions.</p></section>' : ''}<section class="billing-plan-grid">${cards || '<div class="panel billing-notice"><p>Plan details are temporarily unavailable.</p></div>'}</section><p class="billing-footnote">Subscriptions and one-time job posting are restricted to Stripe test mode. Employers can also publish a role through a successful one-time posting payment.</p>`;
+  $$('[data-subscribe-plan]').forEach((button) => button.addEventListener('click', () => startSubscriptionCheckout(button.dataset.subscribePlan)));
+  $('#manage-billing')?.addEventListener('click', manageBilling);
+}
+
+async function startSubscriptionCheckout(planId) {
+  try {
+    const result = await api('/api/payments?route=subscription-checkout', { method: 'POST', body: JSON.stringify({ planId }) });
+    if (result.checkoutUrl) window.location.assign(result.checkoutUrl);
+  } catch (error) { toast(error.message, true); }
+}
+
+async function manageBilling() {
+  try {
+    const result = await api('/api/payments?route=portal', { method: 'POST', body: JSON.stringify({}) });
+    if (result.portalUrl) window.location.assign(result.portalUrl);
+  } catch (error) { toast(error.message, true); }
 }
 
 function renderCompanyProfile() {
@@ -723,6 +766,7 @@ function render() {
   if (state.view === 'jobs') renderJobs();
   else if (state.view === 'applications') renderApplications();
   else if (state.view === 'company') renderCompanyProfile();
+  else if (state.view === 'billing') renderBilling();
   else renderOverview();
   $$('[data-post-job]').forEach((button) => button.addEventListener('click', () => openJobDialog()));
   $$('[data-go]').forEach((button) => button.addEventListener('click', () => setView(button.dataset.go)));
@@ -744,9 +788,16 @@ function setView(view) {
 
 async function loadDashboard(silent = false) {
   if (!silent) $('#main-content').innerHTML = skeleton(4);
-  const [jobsData, applicationsData, companyData] = await Promise.all([api('/api/jobs'), api('/api/applications'), api('/api/company').catch(() => ({ profile: null }))]);
+  const [jobsData, applicationsData, companyData, billingData] = await Promise.all([
+    api('/api/jobs'),
+    api('/api/applications').catch((error) => ({ applications: [], billingAccessDenied: Boolean(error.upgradeRequired || error.billingRequired) })),
+    api('/api/company').catch(() => ({ profile: null })),
+    api('/api/payments?route=status').catch(() => ({ plans: [], billingConfigured: false, billingRequired: false }))
+  ]);
   state.jobs = jobsData.jobs;
-  state.applications = applicationsData.applications;
+  state.applications = applicationsData.applications || [];
+  state.billingAccessDenied = Boolean(applicationsData.billingAccessDenied);
+  state.billing = billingData;
   state.companyProfile = companyData.profile;
   $('#job-count-nav').textContent = state.jobs.length;
   $('#application-count-nav').textContent = state.applications.length;
