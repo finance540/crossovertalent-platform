@@ -432,4 +432,24 @@ test.describe.serial('Crossover Talent E2E release candidate workflows', () => {
     expect(dashboard.data.metrics).toBeTruthy();
     expect(Number(dashboard.data.metrics.totalJobs || 0)).toBeGreaterThan(0);
   });
+
+  test('locale preference persists across landing, marketplace, and auth views', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => localStorage.removeItem('crossover-talent-locale'));
+    await page.reload();
+    await page.locator('#language-switcher').selectOption('ja');
+    await expect(page.locator('[data-i18n="nav.browseJobs"]')).toHaveText('求人を見る');
+    await expect(page.locator('#quick-find-jobs')).toHaveText('求人を探す');
+
+    await page.goto('/?jobs=1');
+    await expect(page.locator('[data-public-tab="jobs"]')).toHaveText('求人');
+    await expect(page.locator('#jobs-screen select[data-language-switcher]')).toHaveValue('ja');
+
+    await page.goto('/?candidate=login');
+    await expect(page.locator('#candidate-auth-screen select[data-language-switcher]')).toHaveValue('ja');
+    await expect(page.locator('#candidate-auth-title')).toHaveText('ダッシュボードへ');
+
+    await page.locator('#candidate-auth-screen select[data-language-switcher]').selectOption('en');
+    await expect(page.locator('#candidate-auth-title')).toHaveText('Access your dashboard');
+  });
 });

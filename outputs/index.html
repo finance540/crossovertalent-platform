@@ -49,7 +49,7 @@
         <button class="button text-only" id="landing-candidate-login" data-i18n="nav.jobSeeker">Job seeker</button>
         <button class="button text-only" id="landing-login" data-i18n="nav.signIn">Sign in</button>
         <button class="button primary" id="landing-start" data-i18n="nav.employerPortal">Employer portal</button>
-        <label class="language-picker"><span class="sr-only">Language</span><select id="language-switcher" aria-label="Language"><option value="en">EN</option><option value="ja">日本語</option></select></label>
+        <label class="language-picker"><span class="sr-only">Language</span><select id="language-switcher" data-language-switcher aria-label="Language"><option value="en">EN</option><option value="ja">日本語</option></select></label>
       </div>
     </header>
 
@@ -255,6 +255,7 @@
     <div class="auth-panel">
       <form id="auth-form" class="auth-form">
         <div class="mobile-brand"><span class="brand-mark">CT</span>crossover talent</div>
+        <label class="language-picker"><span class="sr-only">Language</span><select data-language-switcher aria-label="Language"><option value="en">EN</option><option value="ja">日本語</option></select></label>
         <p class="eyebrow" id="auth-eyebrow">Welcome back</p>
         <h2 id="auth-title">Sign in to your workspace</h2>
         <p class="muted" id="auth-subtitle">Manage your roles and applicant pipeline.</p>
@@ -286,6 +287,7 @@
     <div class="auth-panel">
       <form id="candidate-auth-form" class="auth-form">
         <div class="mobile-brand"><span class="brand-mark">CT</span>crossover talent</div>
+        <label class="language-picker"><span class="sr-only">Language</span><select data-language-switcher aria-label="Language"><option value="en">EN</option><option value="ja">日本語</option></select></label>
         <p class="eyebrow" id="candidate-auth-eyebrow">Job seeker sign in</p>
         <h2 id="candidate-auth-title">Access your dashboard</h2>
         <p class="muted" id="candidate-auth-subtitle">Save jobs, track applications, and update your resume.</p>
@@ -308,7 +310,7 @@
   <section id="jobs-screen" class="public-screen hidden">
     <header class="public-header">
       <a class="brand" href="/"><span class="brand-mark">CT</span>crossover talent</a>
-      <div class="landing-actions"><button class="button subtle" id="candidate-login-button">Job seeker sign in</button><button class="button subtle" id="employer-login-button">Employer sign in</button></div>
+      <div class="landing-actions"><button class="button subtle" id="candidate-login-button">Job seeker sign in</button><button class="button subtle" id="employer-login-button">Employer sign in</button><label class="language-picker"><span class="sr-only">Language</span><select data-language-switcher aria-label="Language"><option value="en">EN</option><option value="ja">日本語</option></select></label></div>
     </header>
     <main class="public-main">
       <div class="public-heading"><p class="eyebrow" id="public-eyebrow">Crossover Talent marketplace</p><h1 id="public-title">Explore impact roles,<br />companies, and reviews.</h1><p id="public-subtitle">Browse live opportunities and workplace signals across climate, impact investment, public healthcare, agriculture, water, education, clean energy, foundations, circular economy, CSR, and ESG consulting.</p></div>
@@ -402,6 +404,7 @@
         <button id="menu-button" class="icon-button menu-button" aria-label="Open menu">☰</button>
         <div class="search"><span>⌕</span><input id="global-search" placeholder="Search this view..." /></div>
         <a class="button subtle public-link" href="/?jobs=1" target="_blank">View job board ↗</a>
+        <label class="language-picker"><span class="sr-only">Language</span><select data-language-switcher aria-label="Language"><option value="en">EN</option><option value="ja">日本語</option></select></label>
         <button class="button primary" id="new-job-button"><span>＋</span> Post a job</button>
       </header>
       <div class="content" id="main-content"></div>
@@ -430,6 +433,7 @@
         <button id="candidate-back-button" class="button subtle" type="button">← Back</button>
         <div class="search"><span>⌕</span><input id="candidate-search" placeholder="Search saved or applied jobs..." /></div>
         <a class="button subtle public-link" href="/?jobs=1">Browse job board ↗</a>
+        <label class="language-picker"><span class="sr-only">Language</span><select data-language-switcher aria-label="Language"><option value="en">EN</option><option value="ja">日本語</option></select></label>
       </header>
       <div class="content" id="candidate-content"></div>
     </main>
@@ -442,7 +446,7 @@
       <button id="admin-logout-button" class="logout-button">Sign out</button>
     </aside>
     <main>
-      <header class="topbar"><div class="search"><span>⌕</span><input id="admin-search" placeholder="Search users, jobs, reviews..." /></div><button class="button primary" id="refresh-admin-button">Refresh admin data</button></header>
+      <header class="topbar"><div class="search"><span>⌕</span><input id="admin-search" placeholder="Search users, jobs, reviews..." /></div><label class="language-picker"><span class="sr-only">Language</span><select data-language-switcher aria-label="Language"><option value="en">EN</option><option value="ja">日本語</option></select></label><button class="button primary" id="refresh-admin-button">Refresh admin data</button></header>
       <div class="content" id="admin-content"></div>
     </main>
   </section>
