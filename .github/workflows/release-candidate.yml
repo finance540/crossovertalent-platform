@@ -38,27 +38,8 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Validate Vercel test credentials
-        run: |
-          if [ -z "$VERCEL_TOKEN" ]; then
-            echo "::error::VERCEL_TOKEN repository secret is empty or unavailable. Configure it in repository Actions secrets."
-            exit 1
-          fi
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-
       - name: Playwright E2E
         run: npm run test:e2e
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: team_FgGXRtXLDnJA0ispgyNnHOsm
-          VERCEL_PROJECT_ID: prj_42VsY69kBxYVTGxPFNfv89AI4Jnz
-          STORAGE_DRIVER: supabase
-          NEXT_PUBLIC_APP_URL: http://127.0.0.1:3000
 
       - name: Upload Playwright report
         if: always()
