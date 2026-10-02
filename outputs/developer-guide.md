@@ -66,12 +66,12 @@ npm run test:e2e
 ## Testing
 
 E2E tests cover:
-- Employer signup, verification, login, company/logo, job posting, status changes.
-- Candidate signup, verification, login, CV upload, save, apply, withdraw.
+- Employer signup, verification, login, company profile, job posting, and application review.
+- Candidate signup, verification, login, job saving, applying, and application status tracking.
 - Admin login, moderation, user management.
 - Public search, filters, company listing, and job detail.
 
-Use a staging or local environment with isolated storage for E2E runs.
+Install the Chromium browser once with `npx playwright install chromium`, then run `npm run test:e2e`. Playwright starts a local Node server with isolated file storage; no Vercel, Supabase, or email-provider credentials are needed. To test a deployed environment instead, set `PLAYWRIGHT_BASE_URL` or `STAGING_APP_URL` to its URL.
 
 ## Development Rules
 

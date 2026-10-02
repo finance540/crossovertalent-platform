@@ -1246,15 +1246,16 @@ $('#candidate-auth-form').addEventListener('submit', async (event) => {
 
 $('#job-form').addEventListener('submit', async (event) => {
   event.preventDefault();
-  const data = formObject(event.currentTarget);
+  const form = event.currentTarget;
+  const data = formObject(form);
   data.sourceAttachment = parseJsonField(data.sourceAttachment);
   data.aiInputs = parseJsonField(data.aiInputs);
-  const button = event.currentTarget.querySelector('[type="submit"]');
+  const button = form.querySelector('[type="submit"]');
   button.disabled = true;
   try {
     const editing = Boolean(data.id);
     await api('/api/jobs', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(data) });
-    event.currentTarget.reset();
+    form.reset();
     $('#job-dialog').close();
     state.view = 'jobs';
     await loadDashboard();
@@ -1265,7 +1266,8 @@ $('#job-form').addEventListener('submit', async (event) => {
 
 $('#apply-form').addEventListener('submit', async (event) => {
   event.preventDefault();
-  const data = formObject(event.currentTarget);
+  const form = event.currentTarget;
+  const data = formObject(form);
   data.cvAttachment = parseJsonField(data.cvAttachment);
   if (state.candidate) {
     data.name = data.name || state.candidate.name;
@@ -1273,7 +1275,7 @@ $('#apply-form').addEventListener('submit', async (event) => {
     data.linkedin = data.linkedin || state.candidate.linkedin || '';
     data.cvText = data.cvText || state.candidate.resume || '';
   }
-  const button = event.currentTarget.querySelector('[type="submit"]');
+  const button = form.querySelector('[type="submit"]');
   button.disabled = true;
   try {
     await api('/api/applications', { method: 'POST', body: JSON.stringify(data) });
@@ -1284,7 +1286,7 @@ $('#apply-form').addEventListener('submit', async (event) => {
         state.candidateApplications = refreshed.applications || [];
       }
     }
-    event.currentTarget.reset();
+    form.reset();
     $('#apply-dialog').close();
     toast(state.candidate ? 'Application submitted. Track it from your dashboard.' : 'Application submitted. Good luck!');
   } catch (error) { toast(error.message, true); }
@@ -1402,12 +1404,13 @@ $('#revise-cv').addEventListener('click', async () => {
 
 $('#review-form').addEventListener('submit', async (event) => {
   event.preventDefault();
-  const data = Object.fromEntries(new FormData(event.currentTarget));
-  const button = event.currentTarget.querySelector('[type="submit"]');
+  const form = event.currentTarget;
+  const data = Object.fromEntries(new FormData(form));
+  const button = form.querySelector('[type="submit"]');
   button.disabled = true;
   try {
     await api('/api/reviews', { method: data.id ? 'PATCH' : 'POST', body: JSON.stringify(data) });
-    event.currentTarget.reset();
+    form.reset();
     $('#review-dialog').close();
     state.publicTab = 'reviews';
     await loadPublicJobs();
@@ -1419,12 +1422,13 @@ $('#review-form').addEventListener('submit', async (event) => {
 
 $('#salary-form').addEventListener('submit', async (event) => {
   event.preventDefault();
-  const data = formObject(event.currentTarget);
-  const button = event.currentTarget.querySelector('[type="submit"]');
+  const form = event.currentTarget;
+  const data = formObject(form);
+  const button = form.querySelector('[type="submit"]');
   button.disabled = true;
   try {
     await api('/api/salary-signals', { method: 'POST', body: JSON.stringify(data) });
-    event.currentTarget.reset();
+    form.reset();
     $('#salary-dialog').close();
     state.publicTab = 'salaries';
     await loadPublicJobs();

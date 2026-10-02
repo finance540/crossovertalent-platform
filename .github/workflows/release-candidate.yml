@@ -40,13 +40,6 @@ jobs:
 
       - name: Playwright E2E
         run: npm run test:e2e
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
-          STORAGE_DRIVER: supabase
-          NEXT_PUBLIC_APP_URL: http://127.0.0.1:3000
 
       - name: Upload Playwright report
         if: always()
@@ -55,4 +48,3 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 14
-
