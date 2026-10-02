@@ -58,6 +58,19 @@ dialog:has(.ai-box){width:min(820px,calc(100% - 30px))}
 .candidate-form-panel label{display:grid;gap:8px;margin:12px 0;color:var(--ink);font-size:13px;font-weight:700}
 .candidate-form-panel input,.candidate-form-panel textarea{width:100%;padding:13px;border:1px solid var(--line);border-radius:8px;background:#fff;font:inherit}
 .candidate-form-panel textarea{resize:vertical}
+.alert-preferences-panel{margin-top:18px}
+.alert-preferences-panel .panel-header{align-items:center;padding:0 0 18px}
+.alert-preferences-panel .panel-header h2{margin:0 0 5px;font-size:17px}
+.alert-preferences-panel .panel-header p:last-child{margin:0;color:var(--muted);font-size:12px}
+.alert-preference-block{margin:12px 0 20px}
+.alert-preference-block>strong{display:block;margin-bottom:10px;font-size:13px}
+.alert-option-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.alert-level-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
+.candidate-form-panel .alert-checkbox{display:flex;align-items:center;gap:8px;min-height:38px;margin:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:12px;font-weight:600}
+.candidate-form-panel .alert-checkbox input[type="checkbox"]{width:16px;height:16px;margin:0;accent-color:var(--green)}
+.candidate-form-panel .alert-enabled{width:fit-content;margin-top:18px}
+.candidate-form-panel .form-grid small{color:var(--muted);font-size:11px;font-weight:400}
+@media(max-width:760px){.alert-option-grid,.alert-level-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.alert-preferences-panel .panel-header{align-items:flex-start;gap:12px}}
 .public-job .row-actions{justify-content:flex-end;align-items:center}
 @media(max-width:760px){.public-job .row-actions{justify-content:flex-start}}
 .pagination{display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:16px 20px;color:var(--muted);font-size:12px}

@@ -1,6 +1,6 @@
 const LIVE_ORIGIN = 'https://build-me-a-simple-website-where.vercel.app';
 const MAX_UPLOAD_BYTES = 3_000_000;
-const state = { user: null, candidate: null, admin: null, adminData: null, companyProfile: null, candidateApplications: [], myReviews: [], jobs: [], applications: [], billing: null, billingAccessDenied: false, publicJobs: [], publicCompanies: null, publicReviews: [], publicSalarySignals: [], salaryAggregates: [], notifications: [], publicTab: 'jobs', adminContentType: 'job', view: 'overview', candidateView: 'overview', authMode: 'login', candidateAuthMode: 'login', adminAuthMode: 'login', search: '', candidateSearch: '', publicSearch: '', sector: '', location: '', level: '', workType: '', functionFilter: '', industry: '', pages: { jobs: 1, applications: 1, publicJobs: 1, publicReviews: 1, publicSalaries: 1, admin: 1 }, pageSize: 10 };
+const state = { user: null, candidate: null, admin: null, adminData: null, companyProfile: null, candidateApplications: [], myReviews: [], jobs: [], applications: [], billing: null, billingAccessDenied: false, publicJobs: [], publicCompanies: null, publicReviews: [], publicSalarySignals: [], salaryAggregates: [], notifications: [], publicTab: 'jobs', adminContentType: 'job', view: 'overview', candidateView: 'overview', candidateAuthReturnView: '', authMode: 'login', candidateAuthMode: 'login', adminAuthMode: 'login', search: '', candidateSearch: '', publicSearch: '', sector: '', location: '', level: '', workType: '', functionFilter: '', industry: '', pages: { jobs: 1, applications: 1, publicJobs: 1, publicReviews: 1, publicSalaries: 1, admin: 1 }, pageSize: 10 };
 let liveSyncTimer;
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -716,9 +716,36 @@ async function uploadCandidateResume(event) {
 
 function renderCandidatePreferences() {
   const prefs = state.candidate.preferences || {};
+  const alerts = state.candidate.jobAlerts || {};
+  const selectedSectors = alerts.sectors || [];
+  const selectedLevels = alerts.levels || [];
   $('#candidate-content').innerHTML = `<section class="page-heading"><div><p class="eyebrow">Job preferences</p><h1>Tell us what ideal looks like.</h1><p class="muted">These preferences power matching, saved-job review, and AI guidance.</p></div></section>
-  <section class="panel candidate-form-panel"><div class="form-grid"><label>Preferred company<input id="pref-company" value="${escapeHtml(prefs.company || '')}" /></label><label>Current compensation<input id="pref-current" value="${escapeHtml(prefs.currentCompensation || '')}" /></label><label>Expected compensation<input id="pref-expected" value="${escapeHtml(prefs.expectedCompensation || '')}" /></label><label>Designation<input id="pref-designation" value="${escapeHtml(prefs.designation || '')}" /></label><label>Job location<input id="pref-location" value="${escapeHtml(prefs.location || '')}" /></label><label>Ideal job role<input id="pref-role" value="${escapeHtml(prefs.idealRole || '')}" /></label></div><div class="dialog-actions"><button class="button primary" id="save-candidate-preferences">Save preferences</button></div></section>`;
+  <section class="panel candidate-form-panel"><div class="form-grid"><label>Preferred company<input id="pref-company" value="${escapeHtml(prefs.company || '')}" /></label><label>Current compensation<input id="pref-current" value="${escapeHtml(prefs.currentCompensation || '')}" /></label><label>Expected compensation<input id="pref-expected" value="${escapeHtml(prefs.expectedCompensation || '')}" /></label><label>Designation<input id="pref-designation" value="${escapeHtml(prefs.designation || '')}" /></label><label>Job location<input id="pref-location" value="${escapeHtml(prefs.location || '')}" /></label><label>Ideal job role<input id="pref-role" value="${escapeHtml(prefs.idealRole || '')}" /></label></div><div class="dialog-actions"><button class="button primary" id="save-candidate-preferences">Save preferences</button></div></section>
+  <section class="panel candidate-form-panel alert-preferences-panel"><div class="panel-header"><div><p class="eyebrow">Automated job alerts</p><h2>New roles that fit your search</h2><p>Choose any combination of filters. Leaving a filter blank includes all options for that category.</p></div><span class="status ${alerts.active ? 'active' : 'draft'}">${alerts.active ? 'On' : 'Paused'}</span></div><div class="alert-preference-block"><strong>Focus sectors</strong><div class="alert-option-grid">${IMPACT_SECTOR_OPTIONS.map((sector, index) => `<label class="alert-checkbox"><input type="checkbox" class="alert-sector" value="${escapeHtml(sector)}" ${selectedSectors.includes(sector) ? 'checked' : ''} /><span>${escapeHtml(sector)}</span></label>`).join('')}</div></div><div class="alert-preference-block"><strong>Seniority levels</strong><div class="alert-option-grid alert-level-grid">${LEVEL_OPTIONS.map((level) => `<label class="alert-checkbox"><input type="checkbox" class="alert-level" value="${escapeHtml(level)}" ${selectedLevels.includes(level) ? 'checked' : ''} /><span>${escapeHtml(level)}</span></label>`).join('')}</div></div><div class="form-grid"><label>Locations<input id="alert-locations" placeholder="Tokyo, Singapore, Remote" value="${escapeHtml((alerts.locations || []).join(', '))}" /><small>Separate multiple locations with commas.</small></label><label>How often<select id="alert-frequency"><option value="instant" ${alerts.frequency === 'instant' || !alerts.frequency ? 'selected' : ''}>As soon as a matching role is published</option><option value="daily" ${alerts.frequency === 'daily' ? 'selected' : ''}>Daily digest</option><option value="weekly" ${alerts.frequency === 'weekly' ? 'selected' : ''}>Weekly digest</option></select></label></div><label class="alert-checkbox alert-enabled"><input type="checkbox" id="alert-enabled" ${alerts.active ? 'checked' : ''} /><span>Email me when jobs match these preferences</span></label><div class="dialog-actions"><button class="button primary" id="save-job-alert-preferences">Save job alerts</button></div></section>`;
   $('#save-candidate-preferences').addEventListener('click', () => saveCandidateProfile({ preferences: { company: $('#pref-company').value, currentCompensation: $('#pref-current').value, expectedCompensation: $('#pref-expected').value, designation: $('#pref-designation').value, location: $('#pref-location').value, idealRole: $('#pref-role').value } }));
+  $('#save-job-alert-preferences').addEventListener('click', saveJobAlertPreferences);
+}
+
+async function saveJobAlertPreferences() {
+  const button = $('#save-job-alert-preferences');
+  button.disabled = true;
+  try {
+    const enabled = $('#alert-enabled').checked;
+    const settings = enabled ? {
+      sectors: $$('.alert-sector:checked').map((input) => input.value),
+      locations: $('#alert-locations').value,
+      levels: $$('.alert-level:checked').map((input) => input.value),
+      frequency: $('#alert-frequency').value
+    } : { enabled: false };
+    const result = await api('/api/job-alerts', { method: 'POST', body: JSON.stringify(settings) });
+    state.candidate.jobAlerts = result.jobAlerts;
+    renderCandidateDashboard();
+    toast(enabled ? 'Job alerts saved' : 'Job alerts paused');
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    if ($('#save-job-alert-preferences')) $('#save-job-alert-preferences').disabled = false;
+  }
 }
 
 function renderCandidateReviews() {
@@ -1155,15 +1182,15 @@ function startSalarySignal() {
   $('#salary-dialog').showModal();
 }
 
-function openJobAlerts() {
-  const form = $('#support-form');
-  if (form) {
-    form.elements.type.value = 'feature';
-    form.elements.priority.value = 'normal';
-    form.elements.subject.value = 'Join job alerts waitlist';
-    form.elements.message.value = 'I would like to receive curated job alerts for relevant impact roles.';
+async function openJobAlerts() {
+  if (!state.candidate) {
+    state.candidateAuthReturnView = 'preferences';
+    openCandidateAuth('register');
+    return;
   }
-  $('#support-dialog').showModal();
+  state.candidateView = 'preferences';
+  try { await loadCandidateDashboard(); }
+  catch (error) { toast(error.message, true); }
 }
 
 async function loadPublicJobs() {
@@ -1594,6 +1621,8 @@ $('#candidate-auth-form').addEventListener('submit', async (event) => {
     }
     state.candidate = response.candidate;
     state.candidateApplications = response.applications || [];
+    if (state.candidateAuthReturnView) state.candidateView = state.candidateAuthReturnView;
+    state.candidateAuthReturnView = '';
     history.replaceState({}, '', '/?candidate=dashboard');
     await loadCandidateDashboard();
     toast(state.candidateAuthMode === 'register' ? 'Job seeker account created' : 'Welcome back');
