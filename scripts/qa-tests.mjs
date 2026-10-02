@@ -54,6 +54,9 @@ includes('app', /localStorage\.getItem\(localeStorageKey\)/, 'locale preference 
 includes('app', /applyLocale\(event\.target\.value\)/, 'locale switching updates the UI');
 includes('i18n', /'nav\.howItWorks'/, 'English translation catalog exists');
 includes('i18n', /'使い方'/, 'Japanese translation catalog exists');
+includes('html', /data-i18n="hero\.h1Lead"/, 'hero heading is localized');
+includes('html', /data-i18n="hero\.findJobs"/, 'hero primary CTA is localized');
+includes('html', /data-i18n="hero\.noteCoverage"/, 'hero proof note is localized');
 includes('html', /application\/ld\+json/, 'structured data exists');
 includes('html', /id="pricing"/, 'pricing placeholders are integrated');
 includes('html', /id="faq"/, 'FAQ content is integrated');
