@@ -1,10 +1,11 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { appUrl, assertSameOrigin, ensureStorage, methodNotAllowed, productEvent, readRecord, requireApprovedEmployerSession, serverError, setSecurityHeaders, writeRecord } from './_lib.js';
+import { appUrl, assertSameOrigin, ensureStorage, methodNotAllowed, productEvent, readRecord, rateLimit, requireApprovedEmployerSession, serverError, setSecurityHeaders, stableHash, tooManyRequests, writeRecord } from './_lib.js';
+import { activeSubscription, billingPlan, billingPlanForPrice, billingPlans, billingEnforced, companySubscription, stripeTestKeyConfigured } from './_billing.js';
 
 export const config = { api: { bodyParser: false } };
 
 export function stripeConfigured() {
-  return Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET);
+  return stripeTestKeyConfigured() && Boolean(process.env.STRIPE_WEBHOOK_SECRET);
 }
 
 function stripeAmount() {
@@ -17,6 +18,7 @@ function stripeCurrency() {
 }
 
 async function stripeRequest(pathname, params) {
+  if (!stripeTestKeyConfigured()) throw new Error('Stripe test mode is not configured');
   const response = await fetch(`https://api.stripe.com/v1/${pathname}`, {
     method: 'POST',
     headers: {
@@ -49,6 +51,33 @@ export async function createJobCheckoutSession(job, session) {
   return checkout;
 }
 
+export async function createSubscriptionCheckoutSession(plan, session, billing) {
+  const priceId = process.env[plan.priceEnv];
+  if (!priceId) throw new Error(`Stripe test price is not configured for ${plan.name}`);
+  const params = {
+    mode: 'subscription',
+    success_url: appUrl('/?dashboard=1&billing=success'),
+    cancel_url: appUrl('/?dashboard=1&billing=cancelled'),
+    'line_items[0][price]': priceId,
+    'line_items[0][quantity]': '1',
+    'metadata[company_id]': session.companyId,
+    'metadata[plan_id]': plan.id,
+    'subscription_data[metadata][company_id]': session.companyId,
+    'subscription_data[metadata][plan_id]': plan.id
+  };
+  if (billing?.stripeCustomerId) params.customer = billing.stripeCustomerId;
+  else params.customer_email = session.email;
+  return stripeRequest('checkout/sessions', params);
+}
+
+export async function createCustomerPortalSession(billing) {
+  if (!billing?.stripeCustomerId) throw new Error('No Stripe customer is linked to this employer');
+  return stripeRequest('billing_portal/sessions', {
+    customer: billing.stripeCustomerId,
+    return_url: appUrl('/?dashboard=1&billing=portal')
+  });
+}
+
 function signatureParts(header = '') {
   return Object.fromEntries(String(header).split(',').map((part) => part.split('=').map((value) => value.trim())).filter(([key, value]) => key && value));
 }
@@ -76,6 +105,9 @@ async function handleWebhook(request, response) {
   const body = await rawBody(request);
   if (!verifySignature(body, request.headers['stripe-signature'])) return response.status(400).json({ error: 'Invalid Stripe signature' });
   const event = JSON.parse(body);
+  if (!event.id || event.livemode !== false) return response.status(400).json({ error: 'Only signed Stripe test-mode events are accepted' });
+  const eventPath = `stripe-events/${stableHash(event.id)}.json`;
+  if (await readRecord(eventPath)) return response.json({ received: true, duplicate: true });
   if (event.type === 'checkout.session.completed' && event.data?.object?.payment_status === 'paid') {
     const checkout = event.data.object;
     const jobId = checkout.metadata?.job_id;
@@ -92,7 +124,55 @@ async function handleWebhook(request, response) {
       }
     }
   }
+  if (['customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted'].includes(event.type)) {
+    const subscription = event.data?.object;
+    const companyId = subscription?.metadata?.company_id;
+    if (subscription?.id && companyId) {
+      const priceId = subscription.items?.data?.[0]?.price?.id || '';
+      const plan = billingPlanForPrice(priceId);
+      const current = await companySubscription(companyId);
+      const eventCreated = Number(event.created) || 0;
+      if (eventCreated >= (Number(current?.lastStripeEventCreated) || 0)) {
+        const customer = typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id || '';
+        const periodEnd = Number(subscription.current_period_end);
+        const updated = {
+          recordType: 'company_billing',
+          companyId,
+          stripeCustomerId: customer || current?.stripeCustomerId || '',
+          stripeSubscriptionId: subscription.id,
+          planId: plan?.id || '',
+          status: subscription.status || 'canceled',
+          currentPeriodEnd: Number.isFinite(periodEnd) && periodEnd > 0 ? new Date(periodEnd * 1000).toISOString() : '',
+          cancelAtPeriodEnd: Boolean(subscription.cancel_at_period_end),
+          lastStripeEventCreated: eventCreated,
+          updatedAt: new Date().toISOString()
+        };
+        await writeRecord(`companies/${companyId}/billing.json`, updated, true);
+        await productEvent('subscription_updated', { actorEmail: '', entityType: 'company', entityId: companyId, metadata: { planId: updated.planId, status: updated.status } });
+      }
+    }
+  }
+  await writeRecord(eventPath, { recordType: 'stripe_event', id: event.id, type: event.type, created: event.created || 0, processedAt: new Date().toISOString() });
   return response.json({ received: true });
+}
+
+async function handleBillingStatus(session, response) {
+  const subscription = await companySubscription(session.companyId);
+  const plan = billingPlan(subscription?.planId);
+  return response.json({
+    plans: billingPlans(),
+    billingConfigured: stripeConfigured(),
+    billingRequired: billingEnforced(),
+    subscription: subscription ? {
+      planId: plan?.id || '',
+      planName: plan?.name || '',
+      status: subscription.status || 'inactive',
+      currentPeriodEnd: subscription.currentPeriodEnd || '',
+      cancelAtPeriodEnd: Boolean(subscription.cancelAtPeriodEnd),
+      active: activeSubscription(subscription),
+      canManageBilling: Boolean(subscription.stripeCustomerId)
+    } : null
+  });
 }
 
 export default async function handler(request, response) {
@@ -106,14 +186,36 @@ export default async function handler(request, response) {
     }
     const session = await requireApprovedEmployerSession(request, response);
     if (!session) return;
+    if (request.method === 'GET' && request.query.route === 'status') return handleBillingStatus(session, response);
     if (request.method !== 'POST' || !assertSameOrigin(request)) return response.status(405).json({ error: 'Method not allowed' });
     const body = typeof request.body === 'object' && request.body ? request.body : JSON.parse(await rawBody(request) || '{}');
+    if (request.query.route === 'subscription-checkout') {
+      if (!(await rateLimit(request, `subscription-checkout:${session.companyId}`, 5, 60_000))) return tooManyRequests(response);
+      if (!stripeConfigured()) return response.status(503).json({ error: 'Stripe test-mode billing is not configured' });
+      const plan = billingPlan(String(body.planId || ''));
+      if (!plan) return response.status(400).json({ error: 'Choose a valid subscription plan' });
+      if (!process.env[plan.priceEnv]) return response.status(503).json({ error: `${plan.name} is not configured in Stripe test mode` });
+      const current = await companySubscription(session.companyId);
+      if (activeSubscription(current)) return response.status(409).json({ error: 'Your subscription is already active. Use billing management to change plans.' });
+      const checkout = await createSubscriptionCheckoutSession(plan, session, current);
+      return response.json({ checkoutUrl: checkout.url });
+    }
+    if (request.query.route === 'portal') {
+      if (!(await rateLimit(request, `billing-portal:${session.companyId}`, 5, 60_000))) return tooManyRequests(response);
+      if (!stripeConfigured()) return response.status(503).json({ error: 'Stripe test-mode billing is not configured' });
+      const billing = await companySubscription(session.companyId);
+      if (!billing?.stripeCustomerId) return response.status(404).json({ error: 'No billing account is linked yet' });
+      const portal = await createCustomerPortalSession(billing);
+      return response.json({ portalUrl: portal.url });
+    }
+    if (request.query.route) return response.status(404).json({ error: 'Unknown billing action' });
+    if (!(await rateLimit(request, `job-payment:${session.companyId}`, 10, 60_000))) return tooManyRequests(response);
     const { jobId } = body;
     const job = await readRecord(`companies/${session.companyId}/jobs/${jobId}.json`);
     if (!job) return response.status(404).json({ error: 'Job not found' });
     if (job.companyId !== session.companyId) return response.status(403).json({ error: 'Forbidden' });
     if (job.payment_status === 'paid') return response.json({ paid: true, job });
-    if (!process.env.STRIPE_SECRET_KEY) return response.status(503).json({ error: 'Stripe test mode is not configured' });
+    if (!stripeConfigured()) return response.status(503).json({ error: 'Stripe test-mode billing is not configured' });
     const checkout = await createJobCheckoutSession(job, session);
     const updated = { ...job, payment_status: 'pending', stripe_checkout_session_id: checkout.id, updated_at: new Date().toISOString() };
     await writeRecord(`companies/${session.companyId}/jobs/${job.id}.json`, updated, true);

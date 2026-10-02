@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check outputs/app.js && node --check api/_lib.js && node --check api/auth.js && node --check api/jobs.js && node --check api/payments.js && node --check api/applications.js && node --check api/reviews.js && node --check api/assist.js && node --check api/candidate.js && node --check api/admin.js && node --check api/company.js && node --check api/ops.js && node --check api/salary-signals.js && node --check scripts/e2e-server.mjs && node --check scripts/qa-tests.mjs && node --check scripts/staging-preflight.mjs && node --check scripts/staging-seed.mjs",
+    "check": "node --check outputs/app.js && node --check api/_lib.js && node --check api/_billing.js && node --check api/auth.js && node --check api/jobs.js && node --check api/payments.js && node --check api/applications.js && node --check api/reviews.js && node --check api/assist.js && node --check api/candidate.js && node --check api/admin.js && node --check api/company.js && node --check api/ops.js && node --check api/salary-signals.js && node --check tests/billing.test.mjs && node --check scripts/e2e-server.mjs && node --check scripts/qa-tests.mjs && node --check scripts/staging-preflight.mjs && node --check scripts/staging-seed.mjs",
     "lint": "npm run check",
     "typecheck": "npm run check",
     "build": "npm run check",
-    "test": "node scripts/qa-tests.mjs",
+    "test": "node scripts/qa-tests.mjs && node --test tests/billing.test.mjs",
     "test:e2e": "playwright test",
     "staging:preflight": "node scripts/staging-preflight.mjs",
     "staging:seed": "node scripts/staging-seed.mjs"
