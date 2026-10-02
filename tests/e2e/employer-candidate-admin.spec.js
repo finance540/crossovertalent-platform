@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, request as playwrightRequest } from '@playwright/test';
 import { api, parseTxtUpload, password, registerVerifyLogin, uniqueEmail } from './fixtures.js';
 
 async function expectAssistantPrompt(page, prompt) {
@@ -32,25 +32,31 @@ async function signInThroughForm(page, role, email) {
 test.describe.serial('Crossover Talent E2E release candidate workflows', () => {
   let stamp;
   let employerEmail;
+  let unrelatedEmployerEmail;
   let candidateEmail;
   let adminEmail;
   let employerCookie = '';
+  let unrelatedEmployerCookie = '';
   let candidateCookie = '';
   let adminCookie = '';
   let job;
   let applicationId;
+  let cvAttachmentId;
   let reviewId;
 
   test.beforeAll(({}, testInfo) => {
     stamp = `${Date.now()}-${testInfo.retry}-${Math.random().toString(36).slice(2, 8)}`;
     employerEmail = uniqueEmail('e2e-employer');
+    unrelatedEmployerEmail = uniqueEmail('e2e-other-employer');
     candidateEmail = uniqueEmail('e2e-candidate');
     adminEmail = `qa-admin-e2e-${stamp}@crossovertalent.asia`;
     employerCookie = '';
+    unrelatedEmployerCookie = '';
     candidateCookie = '';
     adminCookie = '';
     job = undefined;
     applicationId = undefined;
+    cvAttachmentId = undefined;
     reviewId = undefined;
   });
 
@@ -104,6 +110,28 @@ test.describe.serial('Crossover Talent E2E release candidate workflows', () => {
     expect(employer.response.ok()).toBeTruthy();
     expect(employer.data.user.employer_status).toBe('approved');
     employerCookie = employer.cookie;
+
+    const unrelatedRegistration = await api(request, '/api/auth', {
+      method: 'POST',
+      body: { action: 'register', company: `Unrelated E2E Employer ${stamp}`, email: unrelatedEmployerEmail, password }
+    });
+    expect(unrelatedRegistration.response.status()).toBe(202);
+    if (unrelatedRegistration.data.verificationUrl) {
+      const verification = await api(request, unrelatedRegistration.data.verificationUrl, { cookie: unrelatedRegistration.cookie });
+      expect(verification.response.ok()).toBeTruthy();
+    }
+    const unrelatedApproval = await api(request, '/api/admin', {
+      method: 'PATCH',
+      cookie: adminCookie,
+      body: { action: 'employer-approval', email: unrelatedEmployerEmail, status: 'approved', company_validation_notes: 'E2E unrelated employer validation.' }
+    });
+    expect(unrelatedApproval.response.ok()).toBeTruthy();
+    const unrelatedEmployer = await api(request, '/api/auth', {
+      method: 'POST',
+      body: { action: 'login', email: unrelatedEmployerEmail, password }
+    });
+    expect(unrelatedEmployer.response.ok()).toBeTruthy();
+    unrelatedEmployerCookie = unrelatedEmployer.cookie;
 
     const rejectedEmail = uniqueEmail('e2e-rejected-employer');
     const rejected = await api(request, '/api/auth', {
@@ -275,9 +303,76 @@ test.describe.serial('Crossover Talent E2E release candidate workflows', () => {
     await expect(page.locator('#candidate-app')).toBeVisible();
     await expectAssistantPrompt(page, 'How do I upload my CV?');
 
-    const parsed = await parseTxtUpload(request, 'Climate finance CV with partnerships and analytics experience.', 'cv');
-    expect(parsed.text).toContain('Climate finance CV');
+    const anonymousUpload = await api(request, '/api/assist', {
+      method: 'POST',
+      body: {
+        action: 'parse-document',
+        file: { name: 'cv.txt', type: 'text/plain', size: 20, purpose: 'cv', data: Buffer.from('Anonymous CV content').toString('base64') }
+      }
+    });
+    expect(anonymousUpload.response.status()).toBe(401);
 
+    const candidateLogin = await api(request, '/api/candidate', {
+      method: 'POST',
+      body: { action: 'login', email: candidateEmail, password }
+    });
+    expect(candidateLogin.response.ok()).toBeTruthy();
+    candidateCookie = candidateLogin.cookie;
+    const parsed = await parseTxtUpload(request, 'Climate finance CV with partnerships and analytics experience.', 'cv', candidateCookie);
+    cvAttachmentId = parsed.file.id;
+    expect(parsed.text).toContain('Climate finance CV');
+    const savedProfile = await api(request, '/api/candidate', {
+      method: 'POST',
+      cookie: candidateCookie,
+      body: { action: 'profile', resume: parsed.text, resumeAttachmentId: parsed.file.id }
+    });
+    expect(savedProfile.response.ok()).toBeTruthy();
+    expect(savedProfile.data.candidate.resumeAttachment.id).toBe(parsed.file.id);
+    const privateFile = await request.get(`/api/files?id=${encodeURIComponent(parsed.file.id)}`, { headers: { cookie: candidateCookie } });
+    expect(privateFile.status()).toBe(200);
+    expect(await privateFile.text()).toContain('Climate finance CV');
+    expect(privateFile.headers()['cache-control']).toBe('private, no-store');
+    const signedFileResponse = await request.get(`/api/files?id=${encodeURIComponent(parsed.file.id)}`, {
+      headers: { cookie: candidateCookie },
+      maxRedirects: 0
+    });
+    expect(signedFileResponse.status()).toBe(302);
+    const signedFileUrl = signedFileResponse.headers().location;
+    expect(signedFileUrl).toBeTruthy();
+    if (signedFileUrl.startsWith('/api/files?token=')) {
+      const signedToken = new URL(signedFileUrl, 'http://127.0.0.1:3000').searchParams.get('token');
+      const tamperedToken = `${signedToken[0] === 'a' ? 'b' : 'a'}${signedToken.slice(1)}`;
+      const tamperedFile = await request.get(`/api/files?token=${encodeURIComponent(tamperedToken)}`);
+      expect(tamperedFile.status()).toBe(404);
+    }
+    const anonymousRequest = await playwrightRequest.newContext();
+    const anonymousFile = await anonymousRequest.get(`/api/files?id=${encodeURIComponent(parsed.file.id)}`);
+    expect(anonymousFile.status()).toBe(401);
+    await anonymousRequest.dispose();
+    const otherCandidateEmail = uniqueEmail('e2e-other-candidate');
+    const otherCandidateRegistration = await api(request, '/api/candidate', {
+      method: 'POST',
+      body: { action: 'register', name: 'Other E2E Candidate', email: otherCandidateEmail, password }
+    });
+    if (otherCandidateRegistration.data.verificationUrl) {
+      await api(request, otherCandidateRegistration.data.verificationUrl, { cookie: otherCandidateRegistration.cookie });
+    }
+    const otherCandidate = await api(request, '/api/candidate', {
+      method: 'POST',
+      body: { action: 'login', email: otherCandidateEmail, password }
+    });
+    expect(otherCandidate.response.ok()).toBeTruthy();
+    const foreignCandidateFile = await api(request, `/api/files?id=${encodeURIComponent(parsed.file.id)}`, { cookie: otherCandidate.cookie });
+    expect(foreignCandidateFile.response.status()).toBe(404);
+    const wrongOwnerUpload = await api(request, '/api/candidate', {
+      method: 'POST',
+      cookie: candidateCookie,
+      body: { action: 'profile', resumeAttachmentId: '00000000-0000-4000-8000-000000000000' }
+    });
+    expect(wrongOwnerUpload.response.status()).toBe(403);
+
+    await page.reload();
+    await expect(page.locator('#candidate-app')).toBeVisible();
     await page.getByRole('link', { name: 'Browse job board' }).click();
     const publicJob = page.locator('.public-job').filter({ hasText: job.title });
     await expect(publicJob).toBeVisible();
@@ -308,6 +403,7 @@ test.describe.serial('Crossover Talent E2E release candidate workflows', () => {
     const application = applications.data.applications.find((item) => item.job_id === job.id);
     expect(application).toBeTruthy();
     expect(application.email).toBe(candidateEmail);
+    expect(application.cvAttachment.id).toBe(cvAttachmentId);
     applicationId = application.id;
   });
 
@@ -340,6 +436,14 @@ test.describe.serial('Crossover Talent E2E release candidate workflows', () => {
     const applications = await api(request, '/api/applications', { cookie: employerCookie });
     expect(applications.response.ok()).toBeTruthy();
     expect(applications.data.applications.some((item) => item.id === applicationId)).toBeTruthy();
+    const privateFile = await request.get(`/api/files?id=${encodeURIComponent(cvAttachmentId)}`, { headers: { cookie: employerCookie } });
+    expect(privateFile.status()).toBe(200);
+    expect(await privateFile.text()).toContain('Climate finance CV');
+  });
+
+  test('unrelated employer cannot download a candidate CV', async ({ request }) => {
+    const denied = await api(request, `/api/files?id=${encodeURIComponent(cvAttachmentId)}`, { cookie: unrelatedEmployerCookie });
+    expect(denied.response.status()).toBe(404);
   });
 
   test('candidate creates review and salary signal', async ({ request }) => {

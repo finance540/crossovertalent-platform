@@ -13,6 +13,7 @@ function publicCandidate(candidate) {
     email: candidate.email,
     linkedin: candidate.linkedin || '',
     resume: candidate.resume || '',
+    resumeAttachment: candidate.resumeAttachment ? { id: candidate.resumeAttachment.id, name: candidate.resumeAttachment.name } : null,
     savedJobs: candidate.savedJobs || [],
     preferences: candidate.preferences || {}
   };
@@ -169,11 +170,25 @@ export default async function handler(request, response) {
       return response.json({ candidate: publicCandidate(updated) });
     }
     if (action === 'profile') {
+      let resumeAttachment = candidate.resumeAttachment || null;
+      if (Object.hasOwn(body, 'resumeAttachmentId')) {
+        const attachmentId = clean(body.resumeAttachmentId);
+        if (!attachmentId) {
+          resumeAttachment = null;
+        } else {
+          const attachment = await readRecord(`uploaded-files/${attachmentId}.json`);
+          if (!attachment || attachment.kind !== 'cv' || attachment.ownerRole !== 'candidate' || attachment.ownerId !== candidate.id) {
+            return response.status(403).json({ error: 'This CV upload does not belong to your account' });
+          }
+          resumeAttachment = { id: attachment.id, name: attachment.fileName };
+        }
+      }
       const updated = {
         ...candidate,
         name: clean(name || candidate.name).slice(0, 120),
         linkedin: clean(Object.hasOwn(body, 'linkedin') ? linkedin : candidate.linkedin).slice(0, 500),
         resume: clean(Object.hasOwn(body, 'resume') ? resume : candidate.resume).slice(0, 10000),
+        resumeAttachment,
         preferences: {
           company: clean(preferences.company).slice(0, 160),
           currentCompensation: clean(preferences.currentCompensation).slice(0, 80),

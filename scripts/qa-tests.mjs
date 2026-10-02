@@ -5,6 +5,7 @@ const files = {
   app: await readFile('outputs/app.js', 'utf8'),
   html: await readFile('outputs/index.html', 'utf8'),
   lib: await readFile('api/_lib.js', 'utf8'),
+  filesRoute: await readFile('api/files.js', 'utf8'),
   assist: await readFile('api/assist.js', 'utf8'),
   auth: await readFile('api/auth.js', 'utf8'),
   jobs: await readFile('api/jobs.js', 'utf8'),
@@ -18,6 +19,7 @@ const files = {
 };
 files.vercel = await readFile('vercel.json', 'utf8');
 files.seed = await readFile('scripts/staging-seed.mjs', 'utf8');
+files.guide = await readFile('outputs/developer-guide.md', 'utf8');
 
 function includes(file, pattern, label) {
   assert.match(files[file], pattern, label);
@@ -88,6 +90,16 @@ includes('app', /history\.replaceState\(\{\}, '', '\/\?candidate=dashboard'\)/, 
 includes('auth', /employer_status: 'pending_review'/, 'new employers default to pending review');
 includes('auth', /employerStatus\(account\)/, 'employer login evaluates approval status');
 includes('lib', /requireApprovedEmployerSession/, 'protected employer API approval guard exists');
+includes('lib', /configuredPrivateFileDriver/, 'private file storage uses an independent driver');
+includes('lib', /Production private file storage requires Supabase Storage/, 'production private files require object storage');
+includes('lib', /createSignedUrl\(objectPath, safeExpiresIn/, 'Supabase CV downloads use expiring signed URLs');
+includes('filesRoute', /requireApprovedEmployerSession/, 'CV downloads require an approved employer');
+includes('filesRoute', /application\.cvAttachment\?\.id === file\.id/, 'employer CV access requires a matching application');
+includes('filesRoute', /SIGNED_URL_TTL_SECONDS = 300/, 'CV download links expire after five minutes');
+includes('filesRoute', /Cache-Control', 'private, no-store'/, 'CV access responses cannot be cached');
+includes('applications', /uploadedFile\.ownerId !== candidateSession\.candidateId/, 'applications can only attach CVs owned by the signed-in candidate');
+includes('candidate', /attachment\.ownerId !== candidate\.id/, 'candidate profiles can only link CVs owned by the signed-in candidate');
+includes('guide', /Secure CV Storage/, 'developer guide documents private CV storage');
 includes('jobs', /requireApprovedEmployerSession/, 'job posting requires approved employer');
 includes('company', /requireApprovedEmployerSession/, 'company dashboard requires approved employer');
 includes('applications', /requireApprovedEmployerSession/, 'employer applications require approved employer');
