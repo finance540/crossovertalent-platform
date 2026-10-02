@@ -1,0 +1,40 @@
+window.CrossoverTranslations = {
+  en: {
+    'nav.howItWorks': 'How it works',
+    'nav.focusSectors': 'Focus sectors',
+    'nav.pricing': 'Pricing',
+    'nav.faq': 'FAQ',
+    'nav.browseJobs': 'Browse jobs',
+    'nav.jobSeeker': 'Job seeker',
+    'nav.signIn': 'Sign in',
+    'nav.employerPortal': 'Employer portal',
+    'hero.eyebrow': 'Impact career intelligence',
+    'hero.lede': 'Crossover Talent helps candidates and employers discover roles, companies, salary signals, and workplace insight across climate, impact investment, public healthcare, agriculture, water, education, clean energy, foundations, circular economy, CSR, and ESG consulting.',
+    'hero.note': '✓ Executive search ready  ✓ Candidate-first workflow  ✓ Japan, India, and Asia coverage',
+    'trustStrip.title': 'Built for people working on public-good markets',
+    'socialProof.eyebrow': 'Controlled public beta',
+    'socialProof.title': 'Built for selected impact employers and candidates.',
+    'process.eyebrow': 'Glassdoor-inspired, impact-first',
+    'process.title': 'Jobs, company insight, and salary context.',
+    'process.description': 'Candidates can browse open roles, compare employer profiles, review workplace signals, and submit applications. Employers can publish live roles and manage candidates in one portal.'
+  },
+  ja: {
+    'nav.howItWorks': '使い方',
+    'nav.focusSectors': '注力分野',
+    'nav.pricing': '料金',
+    'nav.faq': 'よくある質問',
+    'nav.browseJobs': '求人を見る',
+    'nav.jobSeeker': '求職者',
+    'nav.signIn': 'サインイン',
+    'nav.employerPortal': '採用企業ポータル',
+    'hero.eyebrow': 'インパクト分野のキャリア情報',
+    'hero.lede': 'Crossover Talentは、気候変動、インパクト投資、公共医療、農業、水、教育、クリーンエネルギー、財団、サーキュラーエコノミー、CSR、ESGコンサルティング分野の求人、企業、給与情報、職場の知見を候補者と企業に提供します。',
+    'hero.note': '✓ エグゼクティブサーチ対応  ✓ 候補者中心のワークフロー  ✓ 日本・インド・アジアをカバー',
+    'trustStrip.title': '公共性の高い市場で働く人のために',
+    'socialProof.eyebrow': '限定公開ベータ',
+    'socialProof.title': 'インパクト分野の企業と候補者のために構築されています。',
+    'process.eyebrow': 'インパクトに特化したキャリア情報',
+    'process.title': '求人、企業情報、給与の背景。',
+    'process.description': '候補者は求人を探し、企業プロフィールを比較し、職場の情報を確認して応募できます。企業は一つのポータルで求人を公開し、候補者を管理できます。'
+  }
+};

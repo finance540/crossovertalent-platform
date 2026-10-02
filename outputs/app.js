@@ -2,9 +2,23 @@ const LIVE_ORIGIN = 'https://build-me-a-simple-website-where.vercel.app';
 const MAX_UPLOAD_BYTES = 3_000_000;
 const state = { user: null, candidate: null, admin: null, adminData: null, companyProfile: null, candidateApplications: [], myReviews: [], jobs: [], applications: [], publicJobs: [], publicCompanies: null, publicReviews: [], publicSalarySignals: [], salaryAggregates: [], notifications: [], publicTab: 'jobs', adminContentType: 'job', view: 'overview', candidateView: 'overview', authMode: 'login', candidateAuthMode: 'login', adminAuthMode: 'login', search: '', candidateSearch: '', publicSearch: '', sector: '', location: '', level: '', workType: '', functionFilter: '', industry: '', pages: { jobs: 1, applications: 1, publicJobs: 1, publicReviews: 1, publicSalaries: 1, admin: 1 }, pageSize: 10 };
 let liveSyncTimer;
+const localeStorageKey = 'crossover-talent-locale';
+let locale = localStorage.getItem(localeStorageKey) === 'ja' ? 'ja' : 'en';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const assistantHistory = JSON.parse(sessionStorage.getItem('ct_assistant_history') || '[]').slice(-8);
+
+function applyLocale(nextLocale = locale) {
+  locale = nextLocale === 'ja' ? 'ja' : 'en';
+  localStorage.setItem(localeStorageKey, locale);
+  document.documentElement.lang = locale;
+  $$('[data-i18n]').forEach((element) => {
+    const value = window.CrossoverTranslations?.[locale]?.[element.dataset.i18n];
+    if (value) element.textContent = value;
+  });
+  const switcher = $('#language-switcher');
+  if (switcher) switcher.value = locale;
+}
 
 function escapeHtml(value = '') {
   return String(value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
@@ -1838,6 +1852,7 @@ $('#assistant-form')?.addEventListener('submit', (event) => {
   event.preventDefault();
   submitAssistantPrompt();
 });
+$('#language-switcher')?.addEventListener('change', (event) => applyLocale(event.target.value));
 
 async function init() {
   const params = new URLSearchParams(location.search);
@@ -1886,5 +1901,6 @@ async function init() {
 }
 
 setAuthMode('login');
+applyLocale();
 renderNotifications();
 init();

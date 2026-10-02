@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 
 const files = {
   app: await readFile('outputs/app.js', 'utf8'),
+  i18n: await readFile('outputs/i18n.js', 'utf8'),
   html: await readFile('outputs/index.html', 'utf8'),
   lib: await readFile('api/_lib.js', 'utf8'),
   assist: await readFile('api/assist.js', 'utf8'),
@@ -47,6 +48,12 @@ includes('app', /Candidate onboarding tour/, 'candidate onboarding tour exists')
 includes('app', /Admin onboarding tour/, 'admin onboarding tour exists');
 includes('html', /og:title/, 'Open Graph metadata exists');
 includes('html', /twitter:card/, 'Twitter card metadata exists');
+includes('html', /id="language-switcher"/, 'language switcher exists');
+includes('html', /i18n\.js/, 'translation catalog is loaded');
+includes('app', /localStorage\.getItem\(localeStorageKey\)/, 'locale preference is persisted');
+includes('app', /applyLocale\(event\.target\.value\)/, 'locale switching updates the UI');
+includes('i18n', /'nav\.howItWorks'/, 'English translation catalog exists');
+includes('i18n', /'使い方'/, 'Japanese translation catalog exists');
 includes('html', /application\/ld\+json/, 'structured data exists');
 includes('html', /id="pricing"/, 'pricing placeholders are integrated');
 includes('html', /id="faq"/, 'FAQ content is integrated');

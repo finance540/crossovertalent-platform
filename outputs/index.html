@@ -36,25 +36,26 @@
     <header class="landing-header">
       <a class="brand" href="/"><span class="brand-mark">CT</span>crossover talent</a>
       <nav class="landing-nav" aria-label="Main navigation">
-        <a href="#how-it-works">How it works</a>
-        <a href="#features">Focus sectors</a>
-        <a href="#pricing">Pricing</a>
-        <a href="#faq">FAQ</a>
-        <button id="landing-jobs-link">Browse jobs</button>
+        <a href="#how-it-works" data-i18n="nav.howItWorks">How it works</a>
+        <a href="#features" data-i18n="nav.focusSectors">Focus sectors</a>
+        <a href="#pricing" data-i18n="nav.pricing">Pricing</a>
+        <a href="#faq" data-i18n="nav.faq">FAQ</a>
+        <button id="landing-jobs-link" data-i18n="nav.browseJobs">Browse jobs</button>
       </nav>
       <div class="landing-actions">
-        <button class="button text-only" id="landing-candidate-login">Job seeker</button>
-        <button class="button text-only" id="landing-login">Sign in</button>
-        <button class="button primary" id="landing-start">Employer portal</button>
+        <button class="button text-only" id="landing-candidate-login" data-i18n="nav.jobSeeker">Job seeker</button>
+        <button class="button text-only" id="landing-login" data-i18n="nav.signIn">Sign in</button>
+        <button class="button primary" id="landing-start" data-i18n="nav.employerPortal">Employer portal</button>
+        <label class="language-picker"><span class="sr-only">Language</span><select id="language-switcher" aria-label="Language"><option value="en">EN</option><option value="ja">日本語</option></select></label>
       </div>
     </header>
 
     <main id="main-content-anchor">
       <section class="landing-hero">
         <div class="hero-copy">
-          <p class="eyebrow">Impact career intelligence</p>
+          <p class="eyebrow" data-i18n="hero.eyebrow">Impact career intelligence</p>
           <h1>Find work that<br />moves the <em>world.</em></h1>
-          <p class="hero-lede">Crossover Talent helps candidates and employers discover roles, companies, salary signals, and workplace insight across climate, impact investment, public healthcare, agriculture, water, education, clean energy, foundations, circular economy, CSR, and ESG consulting.</p>
+          <p class="hero-lede" data-i18n="hero.lede">Crossover Talent helps candidates and employers discover roles, companies, salary signals, and workplace insight across climate, impact investment, public healthcare, agriculture, water, education, clean energy, foundations, circular economy, CSR, and ESG consulting.</p>
           <div class="hero-actions">
             <button class="button primary large" id="hero-find-jobs">Find Jobs <span>→</span></button>
             <button class="button play-button" id="hero-hire-talent"><span>↗</span> Hire Talent</button>
@@ -63,7 +64,7 @@
             <button class="button subtle" id="hero-submit-cv">Submit CV</button>
             <button class="button subtle" id="hero-book-consultation">Book a Consultation</button>
           </div>
-          <p class="hero-note"><span>✓</span> Executive search ready <span>✓</span> Candidate-first workflow <span>✓</span> Japan, India, and Asia coverage</p>
+          <p class="hero-note" data-i18n="hero.note"><span>✓</span> Executive search ready <span>✓</span> Candidate-first workflow <span>✓</span> Japan, India, and Asia coverage</p>
         </div>
 
         <div class="hero-visual" aria-label="Crossover Talent hiring workflow preview">
@@ -90,7 +91,7 @@
       </section>
 
       <section class="trust-strip">
-        <p>Built for people working on public-good markets</p>
+        <p data-i18n="trustStrip.title">Built for people working on public-good markets</p>
         <div><span>Climate</span><i></i><span>Impact Investment</span><i></i><span>Public Healthcare</span><i></i><span>Agriculture</span><i></i><span>Water</span><i></i><span>Education</span><i></i><span>Clean Energy</span><i></i><span>CSR & ESG</span></div>
       </section>
 
@@ -102,8 +103,8 @@
       </section>
 
       <section class="social-proof-section">
-        <p class="eyebrow">Controlled public beta</p>
-        <h2>Built for selected impact employers and candidates.</h2>
+        <p class="eyebrow" data-i18n="socialProof.eyebrow">Controlled public beta</p>
+        <h2 data-i18n="socialProof.title">Built for selected impact employers and candidates.</h2>
         <div class="proof-grid">
           <article><strong>For employers</strong><p>Launch roles, improve job descriptions, manage applicants, and build credibility with company context.</p></article>
           <article><strong>For candidates</strong><p>Browse focused roles, save jobs, upload resumes, track applications, and compare workplace signals.</p></article>
@@ -112,7 +113,7 @@
       </section>
 
       <section id="how-it-works" class="process-section">
-        <div class="section-intro"><p class="eyebrow">Glassdoor-inspired, impact-first</p><h2>Jobs, company insight,<br />and salary context.</h2><p>Candidates can browse open roles, compare employer profiles, review workplace signals, and submit applications. Employers can publish live roles and manage candidates in one portal.</p></div>
+        <div class="section-intro"><p class="eyebrow" data-i18n="process.eyebrow">Glassdoor-inspired, impact-first</p><h2 data-i18n="process.title">Jobs, company insight,<br />and salary context.</h2><p data-i18n="process.description">Candidates can browse open roles, compare employer profiles, review workplace signals, and submit applications. Employers can publish live roles and manage candidates in one portal.</p></div>
         <div class="process-grid">
           <article><span>01</span><div class="feature-icon blue">▣</div><h3>Impact job board</h3><p>Live roles tagged by sector, impact area, work type, location, salary, and experience level.</p></article>
           <article><span>02</span><div class="feature-icon coral">♙</div><h3>Company intelligence</h3><p>Company cards combine live openings, review ratings, sectors, and mission-oriented context.</p></article>
@@ -585,6 +586,7 @@
     </form>
   </dialog>
 
+  <script src="i18n.js?v=20261002"></script>
   <script src="app.js?v=20260705-product-sprint"></script>
 </body>
 </html>
