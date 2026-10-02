@@ -29,6 +29,7 @@
     }
   ],
   "rewrites": [
+    { "source": "/api/companies", "destination": "/api/company?route=companies" },
     { "source": "/api/health", "destination": "/api/ops?route=health" },
     { "source": "/api/ready", "destination": "/api/ops?route=ready" },
     { "source": "/api/verify", "destination": "/api/ops?route=verify" },

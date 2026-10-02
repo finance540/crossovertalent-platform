@@ -31,7 +31,7 @@ CI: `.github/workflows/release-candidate.yml` runs lint, typecheck, test, build 
 ## Key folders / files
 
 - `api/jobs.js` – public job board (`GET /api/jobs?public=1[&company=<id>]`) and employer job CRUD.
-- `api/company.js` – company profile + logo upload.
+- `api/company.js` – employer company profile + logo upload; also serves the public `GET /api/companies` (list) and `GET /api/companies?id=<companyId>` (profile + live jobs) via a `vercel.json` rewrite to `/api/company?route=companies` (keeps the Hobby plan under 12 functions).
 - `api/reviews.js` – public reviews (`GET /api/reviews`), candidate review create/edit (`?mine=1`).
 - `api/salary-signals.js` – salary signals + privacy-thresholded aggregates.
 - `api/candidate.js`, `api/auth.js`, `api/admin.js` – job seeker, employer and admin auth/dashboards.

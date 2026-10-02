@@ -1,6 +1,6 @@
 const LIVE_ORIGIN = 'https://build-me-a-simple-website-where.vercel.app';
 const MAX_UPLOAD_BYTES = 3_000_000;
-const state = { user: null, candidate: null, admin: null, adminData: null, companyProfile: null, candidateApplications: [], myReviews: [], jobs: [], applications: [], publicJobs: [], publicReviews: [], publicSalarySignals: [], salaryAggregates: [], notifications: [], publicTab: 'jobs', view: 'overview', candidateView: 'overview', authMode: 'login', candidateAuthMode: 'login', adminAuthMode: 'login', search: '', candidateSearch: '', publicSearch: '', sector: '', location: '', level: '', workType: '', functionFilter: '', industry: '', pages: { jobs: 1, applications: 1, publicJobs: 1, publicReviews: 1, publicSalaries: 1, admin: 1 }, pageSize: 10 };
+const state = { user: null, candidate: null, admin: null, adminData: null, companyProfile: null, candidateApplications: [], myReviews: [], jobs: [], applications: [], publicJobs: [], publicCompanies: null, publicReviews: [], publicSalarySignals: [], salaryAggregates: [], notifications: [], publicTab: 'jobs', view: 'overview', candidateView: 'overview', authMode: 'login', candidateAuthMode: 'login', adminAuthMode: 'login', search: '', candidateSearch: '', publicSearch: '', sector: '', location: '', level: '', workType: '', functionFilter: '', industry: '', pages: { jobs: 1, applications: 1, publicJobs: 1, publicReviews: 1, publicSalaries: 1, admin: 1 }, pageSize: 10 };
 let liveSyncTimer;
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -845,27 +845,86 @@ async function updateApplication(id, status) {
   } catch (error) { toast(error.message, true); }
 }
 
+function companyKey(name = '') {
+  return String(name).trim().toLowerCase();
+}
+
 function marketplaceCompanies() {
   const companies = new Map();
-  state.publicJobs.forEach((job) => {
-    const record = companies.get(job.company) || { company: job.company, sectors: new Set(), locations: new Set(), jobs: 0, reviews: [], latestJob: job.created_at };
+  const companyRecord = (name, base = {}) => {
+    const key = companyKey(name);
+    if (!companies.has(key)) companies.set(key, { key: base.id || `name:${key}`, id: '', company: name, mission: '', missionSummary: '', website: '', logoUrl: '', hasProfile: false, sectors: new Set(), locations: new Set(), jobs: 0, reviews: [], ...base });
+    return companies.get(key);
+  };
+  (state.publicCompanies || []).forEach((item) => {
+    const record = companyRecord(item.name, { id: item.id, mission: item.mission, missionSummary: item.missionSummary, website: item.website, logoUrl: item.logoUrl, hasProfile: item.hasProfile, jobs: item.liveOpenings });
+    (item.sectors || []).forEach((sector) => record.sectors.add(sector));
+    (item.locations || []).forEach((place) => record.locations.add(place));
+  });
+  if (!state.publicCompanies) state.publicJobs.forEach((job) => {
+    const record = companyRecord(job.company, { id: job.companyId });
     record.jobs += 1;
     record.sectors.add(job.sector || 'Impact');
     record.locations.add(job.location);
-    if (job.created_at > record.latestJob) record.latestJob = job.created_at;
-    companies.set(job.company, record);
   });
   state.publicReviews.forEach((review) => {
-    const record = companies.get(review.company) || { company: review.company, sectors: new Set(), locations: new Set(), jobs: 0, reviews: [], latestJob: '' };
+    const record = companyRecord(review.company);
     record.reviews.push(review);
     record.sectors.add(review.sector || 'Impact');
-    record.locations.add(review.location);
-    companies.set(review.company, record);
+    if (review.location) record.locations.add(review.location);
   });
   return [...companies.values()].map((company) => {
     const average = company.reviews.length ? company.reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / company.reviews.length : 0;
-    return { ...company, sectors: [...company.sectors], locations: [...company.locations], rating: average };
-  }).sort((a, b) => (b.jobs + b.reviews.length) - (a.jobs + a.reviews.length));
+    return { ...company, sectors: [...company.sectors].filter(Boolean), locations: [...company.locations].filter(Boolean), rating: average };
+  }).sort((a, b) => (b.jobs + b.reviews.length) - (a.jobs + a.reviews.length) || a.company.localeCompare(b.company));
+}
+
+function companyMissionText(company, full = false) {
+  const text = full ? company.mission : company.missionSummary || company.mission;
+  if (text) return escapeHtml(text);
+  return company.hasProfile ? 'This company has not added a mission statement yet.' : 'This company has not published a profile yet.';
+}
+
+function companyProfileHref(company) {
+  return company.id ? `/?companyProfile=${encodeURIComponent(company.id)}` : '#';
+}
+
+async function openCompanyDetail(key) {
+  const company = marketplaceCompanies().find((item) => item.key === key);
+  if (!company) return toast('Company profile not found', true);
+  const website = safeExternalUrl(company.website);
+  const roleBoard = company.id ? `/?jobs=1&company=${encodeURIComponent(company.id)}` : '';
+  $('#company-detail').innerHTML = `
+    <div class="dialog-header"><div><p class="eyebrow">${company.sectors.map(escapeHtml).join(' · ') || 'Impact'}</p><h2>${escapeHtml(company.company)}</h2><p class="muted">${company.locations.map(escapeHtml).join(' · ') || 'Location not listed'}</p></div><button type="button" class="close-button" data-company-detail-close>×</button></div>
+    <div class="detail-grid"><div><small>Live openings</small><strong>${company.jobs}</strong></div><div><small>Reviews</small><strong>${company.reviews.length ? `${company.reviews.length} · ${company.rating.toFixed(1)} / 5` : 'No reviews yet'}</strong></div><div><small>Website</small>${website ? `<a href="${website}" target="_blank" rel="noopener">${escapeHtml(company.website.replace(/^https?:\/\//i, ''))} ↗</a>` : '<strong>Not listed</strong>'}</div></div>
+    <h3>Mission</h3>
+    <p class="job-description">${companyMissionText(company, true)}</p>
+    <h3>Open roles</h3>
+    <div class="company-roles" id="company-detail-roles">${company.id && company.jobs ? skeleton(2) : '<p class="muted">No open roles right now.</p>'}</div>
+    ${company.reviews.length ? `<h3>Recent reviews</h3><div class="company-roles">${company.reviews.slice(0, 3).map((review) => `<article><div><strong>${escapeHtml(review.headline || 'Workplace review')}</strong><small>${ratingStars(Number(review.rating || 0))} · ${escapeHtml(review.role || '')}</small></div></article>`).join('')}</div>` : ''}
+    <div class="dialog-actions"><button type="button" class="button subtle" data-company-review>Review this company</button>${roleBoard && company.jobs ? `<a class="button primary" href="${roleBoard}">See all open roles</a>` : ''}</div>`;
+  $('#company-detail-dialog').showModal();
+  $('[data-company-detail-close]').addEventListener('click', () => $('#company-detail-dialog').close());
+  $('[data-company-review]').addEventListener('click', () => {
+    $('#company-detail-dialog').close();
+    startReview();
+  });
+  if (!company.id || !company.jobs) return;
+  try {
+    const data = await api(`/api/companies?id=${encodeURIComponent(company.id)}`);
+    $('#company-detail-roles').innerHTML = data.jobs.length ? data.jobs.map((job) => `<article><div><strong>${escapeHtml(job.title)}</strong><small>${escapeHtml(job.location)} · ${escapeHtml(job.type)} · ${escapeHtml(job.experience || 'Open level')}</small></div><button type="button" class="mini-button" data-company-job="${escapeHtml(job.id)}">View role</button></article>`).join('') : '<p class="muted">No open roles right now.</p>';
+    $$('[data-company-job]').forEach((button) => button.addEventListener('click', () => {
+      const jobId = button.dataset.companyJob;
+      if (!state.publicJobs.some((job) => String(job.id) === jobId)) {
+        location.href = `${roleBoard}&job=${encodeURIComponent(jobId)}`;
+        return;
+      }
+      $('#company-detail-dialog').close();
+      openJobDetail(jobId);
+    }));
+  } catch (error) {
+    $('#company-detail-roles').innerHTML = `<div class="error-box">${escapeHtml(error.message)}</div>`;
+  }
 }
 
 function publicMatches(item) {
@@ -967,11 +1026,12 @@ function renderCompaniesList() {
   $('#public-market').innerHTML = companies.length ? page.items.map((company) => `
     <article class="company-card">
       <div>
-        <p class="company">${company.sectors.map(escapeHtml).join(' · ')}</p>
-        <h2>${escapeHtml(company.company)}</h2>
-        <p>${company.locations.map(escapeHtml).join(' · ') || 'Location not listed'}</p>
-        <div class="company-metrics"><span>${company.jobs} open role${company.jobs === 1 ? '' : 's'}</span><span>${company.reviews.length} review${company.reviews.length === 1 ? '' : 's'}</span><span>${company.rating ? `${ratingStars(company.rating)} ${company.rating.toFixed(1)}` : 'No rating yet'}</span></div>
+        <p class="company">${company.sectors.map(escapeHtml).join(' · ') || 'Impact'}</p>
+        <h2><a href="${companyProfileHref(company)}" data-company-detail="${escapeHtml(company.key)}">${escapeHtml(company.company)}</a></h2>
+        <p class="company-mission">${companyMissionText(company)}</p>
+        <div class="company-metrics"><span>${company.jobs} live opening${company.jobs === 1 ? '' : 's'}</span><span>${company.reviews.length} review${company.reviews.length === 1 ? '' : 's'}</span><span>${company.rating ? `${ratingStars(company.rating)} ${company.rating.toFixed(1)}` : 'No rating yet'}</span></div>
       </div>
+      <div class="row-actions"><button type="button" class="button primary" data-company-detail="${escapeHtml(company.key)}">View company</button></div>
     </article>`).join('') + paginationControls('publicJobs', page) : marketplaceEmptyState('companies');
   bindPagination($('#public-market'));
 }
@@ -1054,8 +1114,9 @@ async function loadPublicJobs() {
     $('#public-market').innerHTML = skeleton(5);
     const params = new URLSearchParams(location.search);
     const companyId = params.get('company');
-    const [data, reviewsData, salariesData, candidateData] = await Promise.all([api(`/api/jobs?public=1${companyId ? `&company=${encodeURIComponent(companyId)}` : ''}`), api('/api/reviews'), api('/api/salary-signals'), api('/api/candidate?optional=1').catch(() => null)]);
+    const [data, reviewsData, salariesData, candidateData, companiesData] = await Promise.all([api(`/api/jobs?public=1${companyId ? `&company=${encodeURIComponent(companyId)}` : ''}`), api('/api/reviews'), api('/api/salary-signals'), api('/api/candidate?optional=1').catch(() => null), api('/api/companies').catch(() => null)]);
     state.publicJobs = data.jobs;
+    state.publicCompanies = companiesData?.companies || null;
     state.publicReviews = reviewsData.reviews;
     state.publicSalarySignals = salariesData.signals || [];
     state.salaryAggregates = salariesData.aggregates || [];
@@ -1076,6 +1137,12 @@ async function loadPublicJobs() {
     renderMarketplace();
     const directJob = params.get('job');
     if (directJob && state.publicJobs.some((job) => String(job.id) === directJob)) openJobDetail(directJob);
+    const companyProfile = params.get('companyProfile');
+    if (companyProfile && !directJob) {
+      state.publicTab = 'companies';
+      renderMarketplace();
+      openCompanyDetail(companyProfile);
+    }
   } catch (error) {
     $('#public-market').innerHTML = `<div class="error-box">${escapeHtml(error.message)}</div>`;
   }
@@ -1543,6 +1610,12 @@ $('#market-summary').addEventListener('click', (event) => {
   renderMarketplace();
 });
 $('#public-market').addEventListener('click', (event) => {
+  const companyLink = event.target.closest('[data-company-detail]');
+  if (companyLink) {
+    event.preventDefault();
+    openCompanyDetail(companyLink.dataset.companyDetail);
+    return;
+  }
   const button = event.target.closest('[data-empty-action]');
   if (button) runEmptyStateAction(button.dataset.emptyAction);
 });
