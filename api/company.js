@@ -1,4 +1,4 @@
-import { IMPACT_SECTORS, allowStorageFallback, auditLog, assertSameOrigin, configuredSupabaseUrl, ensureStorage, forbidden, methodNotAllowed, productEvent, readRecord, requireApprovedEmployerSession, serverError, setSecurityHeaders, uploadPrivateFile, writeRecord } from './_lib.js';
+import { IMPACT_SECTORS, allowStorageFallback, auditLog, assertSameOrigin, configuredSupabaseUrl, employerStatus, ensureStorage, forbidden, isProductionSmokeRecord, isPublicJob, listRecords, methodNotAllowed, productEvent, readRecord, requireApprovedEmployerSession, serverError, setSecurityHeaders, uploadPrivateFile, writeRecord } from './_lib.js';
 import { randomUUID } from 'node:crypto';
 
 const MAX_LOGO_BYTES = 750_000;
@@ -21,6 +21,70 @@ function publicProfile(profile = {}, session = {}) {
     logo: profile.logo || null,
     updated_at: profile.updated_at || profile.created_at || ''
   };
+}
+
+const MISSION_SUMMARY_LENGTH = 220;
+const HIDDEN_EMPLOYER_STATUSES = ['rejected', 'suspended'];
+
+function missionSummary(text = '') {
+  const value = clean(text).replace(/\s+/g, ' ');
+  if (value.length <= MISSION_SUMMARY_LENGTH) return value;
+  return `${value.slice(0, MISSION_SUMMARY_LENGTH).replace(/\s+\S*$/, '')}…`;
+}
+
+function unique(values) {
+  return [...new Set(values.map(clean).filter(Boolean))];
+}
+
+function publicCompany(companyId, profile, jobs) {
+  const name = clean(profile?.company) || clean(jobs[0]?.company);
+  const mission = clean(profile?.mission || profile?.description);
+  return {
+    id: companyId,
+    companyId,
+    name,
+    sectors: unique([profile?.sector, ...(profile?.sectors || []), ...jobs.map((job) => job.sector)]),
+    mission,
+    missionSummary: missionSummary(mission),
+    website: clean(profile?.website),
+    location: clean(profile?.location),
+    locations: unique([profile?.location, ...jobs.map((job) => job.location)]),
+    logoUrl: profile?.logo?.publicUrl || '',
+    liveOpenings: jobs.length,
+    hasProfile: Boolean(profile),
+    updated_at: profile?.updated_at || profile?.created_at || jobs[0]?.created_at || ''
+  };
+}
+
+async function publicCompanies() {
+  const [records, accounts] = await Promise.all([listRecords('companies/'), listRecords('accounts/')]);
+  const hiddenCompanyIds = new Set(accounts.filter((account) => account.disabled || HIDDEN_EMPLOYER_STATUSES.includes(employerStatus(account))).map((account) => account.companyId));
+  const profiles = new Map();
+  const jobsByCompany = new Map();
+  records.forEach((record) => {
+    if (!record.companyId || hiddenCompanyIds.has(record.companyId)) return;
+    if (record.recordType === 'company_profile' && clean(record.company) && !isProductionSmokeRecord(record)) profiles.set(record.companyId, record);
+    if (isPublicJob(record)) jobsByCompany.set(record.companyId, [...(jobsByCompany.get(record.companyId) || []), record]);
+  });
+  const companyIds = new Set([...profiles.keys(), ...jobsByCompany.keys()]);
+  const companies = [...companyIds].map((companyId) => {
+    const jobs = (jobsByCompany.get(companyId) || []).sort((a, b) => b.created_at.localeCompare(a.created_at));
+    return { company: publicCompany(companyId, profiles.get(companyId), jobs), jobs };
+  });
+  return companies
+    .filter(({ company }) => company.name)
+    .sort((a, b) => b.company.liveOpenings - a.company.liveOpenings || a.company.name.localeCompare(b.company.name));
+}
+
+async function handlePublicCompanies(request, response) {
+  if (request.method !== 'GET') return methodNotAllowed(response);
+  const companies = await publicCompanies();
+  if (request.query.id) {
+    const match = companies.find(({ company }) => company.id === request.query.id);
+    if (!match) return response.status(404).json({ error: 'Company not found' });
+    return response.json({ company: match.company, jobs: match.jobs });
+  }
+  return response.json({ companies: companies.map(({ company }) => company) });
 }
 
 function publicStorageUrl(bucket, objectPath) {
@@ -58,6 +122,7 @@ export default async function handler(request, response) {
     response.setHeader('Cache-Control', 'no-store');
     setSecurityHeaders(response);
     ensureStorage();
+    if (request.query.route === 'companies') return handlePublicCompanies(request, response);
     const session = await requireApprovedEmployerSession(request, response);
     if (!session) return;
     const path = `companies/${session.companyId}/profile.json`;

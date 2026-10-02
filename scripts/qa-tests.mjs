@@ -182,6 +182,13 @@ includes('app', /No company profiles yet/, 'companies empty state explains an em
 includes('app', /Post the first job/, 'jobs empty state invites the first job');
 includes('app', /Be the first to leave a review/, 'reviews empty state invites the first review');
 includes('app', /data-summary-tab/, 'marketplace counters link to their tabs');
+includes('app', /api\/companies/, 'marketplace loads company profiles from the companies API');
+includes('app', /function openCompanyDetail/, 'company cards open a company detail view');
+includes('app', /live opening/, 'company cards show live openings');
+includes('vercel', /"source": "\/api\/companies", "destination": "\/api\/company\?route=companies"/, 'public companies URL is routed without adding a serverless function');
+includes('company', /request\.query\.route === 'companies'/, 'public companies API is served before employer auth');
+includes('company', /missionSummary/, 'companies API returns mission summaries');
+includes('lib', /export function isPublicJob/, 'public job visibility is shared between APIs');
 includes('app', /data-empty-action="clear-filters"|'clear-filters', 'Clear filters'/, 'filtered empty states offer clear filters');
 includes('app', /function clearPublicFilters/, 'clear filters resets marketplace filters');
 

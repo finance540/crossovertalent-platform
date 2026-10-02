@@ -45,6 +45,14 @@ export function allowAdminSelfRegistration() {
   return process.env.VERCEL_ENV !== 'production' || process.env.ALLOW_ADMIN_SELF_REGISTRATION === 'true';
 }
 
+export function isProductionSmokeRecord(record = {}) {
+  return /^Prod Smoke/i.test(String(record.title || '')) || /^Prod Smoke/i.test(String(record.company || ''));
+}
+
+export function isPublicJob(job = {}) {
+  return job.recordType === 'job' && job.schemaVersion >= 2 && job.status === 'active' && !isProductionSmokeRecord(job);
+}
+
 export function employerStatus(account = {}) {
   const status = account.employer_status || account.employerStatus || '';
   if (EMPLOYER_STATUSES.includes(status)) return status;
