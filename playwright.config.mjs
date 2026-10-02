@@ -2,6 +2,8 @@ import { defineConfig, devices } from '@playwright/test';
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || process.env.STAGING_APP_URL || 'http://127.0.0.1:3000';
 
+if (process.env.VERCEL_TOKEN) process.env.VERCEL_TOKEN = process.env.VERCEL_TOKEN.trim();
+
 export default defineConfig({
   testDir: './tests/e2e',
   timeout: 60_000,
