@@ -175,5 +175,12 @@ includes('app', /generateCandidateResume/, 'AI CV assistant is wired');
 includes('html', /id="level-filter"/, 'level filter exists');
 includes('html', /id="type-filter"/, 'work type filter exists');
 includes('app', /publicMatches/, 'marketplace filters are wired');
+includes('app', /function marketplaceEmptyState/, 'marketplace empty states exist');
+includes('app', /hasPublicFilters\(\)/, 'empty states distinguish filtered results from an empty marketplace');
+includes('app', /No open roles yet/, 'jobs empty state explains an empty board');
+includes('app', /No company profiles yet/, 'companies empty state explains an empty directory');
+includes('app', /Write the first review/, 'reviews empty state invites the first review');
+includes('app', /data-empty-action="clear-filters"|'clear-filters', 'Clear filters'/, 'filtered empty states offer clear filters');
+includes('app', /function clearPublicFilters/, 'clear filters resets marketplace filters');
 
 console.log('QA structural tests passed');
