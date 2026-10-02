@@ -608,13 +608,13 @@ function renderCandidateOverview() {
     <article class="tour-card"><span>3</span><h3>Track status</h3><p>Follow each application from applied through final decision.</p></article>
   </section>
   <section class="stats-grid"><article class="stat-card"><div class="stat-icon green">♡</div><p>Saved jobs</p><strong>${saved.length}</strong></article><article class="stat-card"><div class="stat-icon blue">♙</div><p>Applied jobs</p><strong>${applications.length}</strong></article><article class="stat-card"><div class="stat-icon yellow">◎</div><p>Resume</p><strong>${state.candidate.resume ? 'Ready' : 'Add'}</strong></article><article class="stat-card"><div class="stat-icon coral">⚙</div><p>Preferences</p><strong>${Object.values(state.candidate.preferences || {}).filter(Boolean).length}</strong></article></section>
-  <section class="panel"><div class="panel-header"><div><h2>Recent applications</h2><p>Your application history across Crossover Talent.</p></div></div>${applications.length ? applicationTable(applications.slice(0, 5)) : emptyState('♙', 'No applications yet', 'Apply to jobs from the public board and they will appear here.')}</section>`;
+  <section class="panel"><div class="panel-header"><div><h2>Recent applications</h2><p>Your application history across Crossover Talent.</p></div></div>${applications.length ? applicationTable(applications.slice(0, 5)) : emptyState('♙', 'No applications yet', 'Apply to jobs from the public board and they will appear here.', '<a class="button primary" href="/?jobs=1">Browse jobs</a>')}</section>`;
 }
 
 function renderSavedJobs() {
   const jobs = candidateJobsById();
   const saved = (state.candidate.savedJobs || []).map((id) => jobs.get(String(id))).filter(Boolean);
-  $('#candidate-content').innerHTML = `<section class="page-heading"><div><p class="eyebrow">Saved jobs</p><h1>${saved.length} saved role${saved.length === 1 ? '' : 's'}</h1><p class="muted">Save roles from the marketplace and revisit them here.</p></div><a class="button primary" href="/?jobs=1">Browse jobs</a></section><section class="panel">${saved.length ? saved.map((job) => `<article class="public-job"><div><p class="company">${escapeHtml(job.company)} · ${escapeHtml(job.sector || 'Impact')}</p><h2>${escapeHtml(job.title)}</h2><p>${escapeHtml(job.location)} · ${moneyLabel(job.salary)}</p></div><div class="row-actions"><button class="button subtle" data-unsave-job="${job.id}">Remove</button><button class="button primary" data-apply="${job.id}">Apply</button></div></article>`).join('') : emptyState('♡', 'No saved jobs yet', 'Browse the job board and save roles that match your preferences.')}</section>`;
+  $('#candidate-content').innerHTML = `<section class="page-heading"><div><p class="eyebrow">Saved jobs</p><h1>${saved.length} saved role${saved.length === 1 ? '' : 's'}</h1><p class="muted">Save roles from the marketplace and revisit them here.</p></div><a class="button primary" href="/?jobs=1">Browse jobs</a></section><section class="panel">${saved.length ? saved.map((job) => `<article class="public-job"><div><p class="company">${escapeHtml(job.company)} · ${escapeHtml(job.sector || 'Impact')}</p><h2>${escapeHtml(job.title)}</h2><p>${escapeHtml(job.location)} · ${moneyLabel(job.salary)}</p></div><div class="row-actions"><button class="button subtle" data-unsave-job="${job.id}">Remove</button><button class="button primary" data-apply="${job.id}">Apply</button></div></article>`).join('') : emptyState('♡', 'No saved jobs yet', 'Browse the job board and save roles that match your preferences.', '<a class="button primary" href="/?jobs=1">Save your first role</a>')}</section>`;
   $$('[data-unsave-job]').forEach((button) => button.addEventListener('click', () => toggleSaveJob(button.dataset.unsaveJob, false)));
   $$('[data-apply]').forEach((button) => button.addEventListener('click', () => openApply(button.dataset.apply)));
 }
@@ -622,7 +622,7 @@ function renderSavedJobs() {
 function renderCandidateApplications() {
   const applications = filteredCandidateApplications();
   const page = paginate(applications, 'applications');
-  $('#candidate-content').innerHTML = `<section class="page-heading"><div><p class="eyebrow">Application history</p><h1>${applications.length} applied job${applications.length === 1 ? '' : 's'}</h1><p class="muted">Status updates from employers appear here.</p></div></section><section class="panel">${applications.length ? `<div class="table-wrap"><table><thead><tr><th>Role</th><th>Applied</th><th>Status</th><th>Action</th></tr></thead><tbody>${page.items.map((item) => `<tr><td class="title-cell"><strong>${escapeHtml(item.job_title)}</strong><small>${escapeHtml(item.company || item.companyId || '')}</small></td><td>${dateLabel(item.created_at)}</td><td><span class="status ${item.status}">${statusLabel(item.status)}</span></td><td>${['offered', 'hired', 'withdrawn', 'offer'].includes(item.status) ? '—' : `<button class="mini-button" data-withdraw-application="${item.id}">Withdraw</button>`}</td></tr>`).join('')}</tbody></table></div>${paginationControls('applications', page)}` : emptyState('♙', 'No application history', 'Apply to roles with your candidate email to build this history.')}</section>`;
+  $('#candidate-content').innerHTML = `<section class="page-heading"><div><p class="eyebrow">Application history</p><h1>${applications.length} applied job${applications.length === 1 ? '' : 's'}</h1><p class="muted">Status updates from employers appear here.</p></div></section><section class="panel">${applications.length ? `<div class="table-wrap"><table><thead><tr><th>Role</th><th>Applied</th><th>Status</th><th>Action</th></tr></thead><tbody>${page.items.map((item) => `<tr><td class="title-cell"><strong>${escapeHtml(item.job_title)}</strong><small>${escapeHtml(item.company || item.companyId || '')}</small></td><td>${dateLabel(item.created_at)}</td><td><span class="status ${item.status}">${statusLabel(item.status)}</span></td><td>${['offered', 'hired', 'withdrawn', 'offer'].includes(item.status) ? '—' : `<button class="mini-button" data-withdraw-application="${item.id}">Withdraw</button>`}</td></tr>`).join('')}</tbody></table></div>${paginationControls('applications', page)}` : emptyState('♙', 'No application history', 'Apply to roles with your candidate email to build this history.', '<a class="button primary" href="/?jobs=1">Browse jobs</a>')}</section>`;
   $$('[data-withdraw-application]').forEach((button) => button.addEventListener('click', () => withdrawApplication(button.dataset.withdrawApplication)));
   bindPagination($('#candidate-content'));
 }
@@ -679,8 +679,9 @@ function renderCandidatePreferences() {
 }
 
 function renderCandidateReviews() {
-  $('#candidate-content').innerHTML = `<section class="page-heading"><div><p class="eyebrow">My reviews</p><h1>Edit your workplace reviews.</h1><p class="muted">Update reviews you created. Public identity settings still apply.</p></div><button class="button primary" id="candidate-add-review">Add review</button></section><section class="panel">${state.myReviews.length ? state.myReviews.map((review) => `<article class="review-card"><div class="review-head"><div><p class="company">${escapeHtml(review.company)} · ${escapeHtml(review.sector)}</p><h2>${escapeHtml(review.headline)}</h2></div><strong>${ratingStars(review.rating)} ${Number(review.rating).toFixed(1)}</strong></div><p>${escapeHtml(review.role)} · ${escapeHtml(review.location)}</p><div class="row-actions"><button class="mini-button" data-edit-review="${review.id}">Edit review</button></div></article>`).join('') : emptyState('◎', 'No reviews yet', 'Add a verified review from the marketplace or your dashboard.')}</section>`;
+  $('#candidate-content').innerHTML = `<section class="page-heading"><div><p class="eyebrow">My reviews</p><h1>Edit your workplace reviews.</h1><p class="muted">Update reviews you created. Public identity settings still apply.</p></div><button class="button primary" id="candidate-add-review">Add review</button></section><section class="panel">${state.myReviews.length ? state.myReviews.map((review) => `<article class="review-card"><div class="review-head"><div><p class="company">${escapeHtml(review.company)} · ${escapeHtml(review.sector)}</p><h2>${escapeHtml(review.headline)}</h2></div><strong>${ratingStars(review.rating)} ${Number(review.rating).toFixed(1)}</strong></div><p>${escapeHtml(review.role)} · ${escapeHtml(review.location)}</p><div class="row-actions"><button class="mini-button" data-edit-review="${review.id}">Edit review</button></div></article>`).join('') : emptyState('◎', 'No reviews yet', 'Share an anonymous, verified review of a workplace you know to help other candidates.', '<button class="button primary" id="candidate-first-review">Write your first review</button>')}</section>`;
   $('#candidate-add-review').addEventListener('click', () => openReviewDialog());
+  $('#candidate-first-review')?.addEventListener('click', () => openReviewDialog());
   $$('[data-edit-review]').forEach((button) => button.addEventListener('click', () => openReviewDialog(state.myReviews.find((review) => review.id === button.dataset.editReview))));
 }
 
@@ -879,6 +880,45 @@ function publicMatches(item) {
   return queryMatch && sectorMatch && industryMatch && locationMatch && levelMatch && typeMatch && functionMatch;
 }
 
+const MARKETPLACE_EMPTY_STATES = {
+  jobs: { label: 'roles', icon: '▣', title: 'No open roles yet', copy: 'New impact roles are published here as approved employers post them. Join job alerts to hear about new roles first.', actions: [['post-job', 'Post the first job', 'primary'], ['job-alerts', 'Get job alerts', 'subtle']] },
+  companies: { label: 'companies', icon: '◇', title: 'No company profiles yet', copy: 'Company profiles appear once employers publish roles or candidates share workplace reviews.', actions: [['post-job', 'Add your company', 'primary'], ['add-review', 'Review a company', 'subtle']] },
+  reviews: { label: 'reviews', icon: '◎', title: 'No reviews yet', copy: 'Be the first to share an anonymous, verified workplace review and help candidates compare employers.', actions: [['add-review', 'Be the first to leave a review', 'primary']] },
+  salaries: { label: 'salary signals', icon: '¤', title: 'No salary signals yet', copy: 'Salary ranges are shown only as aggregates once enough signals exist, so no individual submission is exposed.', actions: [['add-salary', 'Share the first salary signal', 'primary']] }
+};
+
+function hasPublicFilters() {
+  return Boolean(state.publicSearch || state.sector || state.industry || state.location || state.level || state.workType || state.functionFilter);
+}
+
+function emptyStateActions(actions) {
+  return `<div class="empty-actions">${actions.map(([action, label, tone]) => `<button class="button ${tone}" data-empty-action="${action}">${label}</button>`).join('')}</div>`;
+}
+
+function marketplaceEmptyState(kind) {
+  const config = MARKETPLACE_EMPTY_STATES[kind];
+  if (hasPublicFilters()) return emptyState('⌕', `No ${config.label} match these filters`, 'Try a different keyword, sector, or location, or clear all filters to see everything.', emptyStateActions([['clear-filters', 'Clear filters', 'subtle']]));
+  if (kind === 'jobs' && new URLSearchParams(location.search).get('company')) return emptyState(config.icon, 'No open roles at this company right now', 'This employer has no published roles at the moment. Browse the full marketplace for similar opportunities.', emptyStateActions([['all-jobs', 'Browse all jobs', 'primary']]));
+  if (kind === 'salaries' && state.publicSalarySignals.length) return emptyState(config.icon, 'Not enough salary signals yet', 'Ranges appear once enough signals exist for a role, so no individual submission is exposed. Add yours to help unlock them.', emptyStateActions(config.actions));
+  return emptyState(config.icon, config.title, config.copy, emptyStateActions(config.actions));
+}
+
+function clearPublicFilters() {
+  Object.assign(state, { publicSearch: '', sector: '', industry: '', location: '', level: '', workType: '', functionFilter: '' });
+  ['#public-search', '#sector-filter', '#location-filter', '#level-filter', '#type-filter', '#function-filter', '#industry-filter'].forEach((selector) => { if ($(selector)) $(selector).value = ''; });
+  resetPage(pageKeyForPublic());
+  renderMarketplace();
+}
+
+function runEmptyStateAction(action) {
+  if (action === 'clear-filters') clearPublicFilters();
+  else if (action === 'all-jobs') openJobs();
+  else if (action === 'job-alerts') openJobAlerts();
+  else if (action === 'post-job') openAuth('register');
+  else if (action === 'add-review') startReview();
+  else if (action === 'add-salary') startSalarySignal();
+}
+
 function updatePublicFilterOptions() {
   const locationSelect = $('#location-filter');
   const functionSelect = $('#function-filter');
@@ -898,13 +938,8 @@ function updatePublicFilterOptions() {
 
 function renderMarketSummary() {
   const companies = marketplaceCompanies();
-  const ratings = state.publicReviews.map((review) => Number(review.rating || 0)).filter(Boolean);
-  const average = ratings.length ? (ratings.reduce((sum, value) => sum + value, 0) / ratings.length).toFixed(1) : '—';
-  $('#market-summary').innerHTML = `
-    <article><strong>${state.publicJobs.length}</strong><span>Live jobs</span></article>
-    <article><strong>${companies.length}</strong><span>Companies</span></article>
-    <article><strong>${state.publicReviews.length}</strong><span>Reviews</span></article>
-    <article><strong>${state.publicSalarySignals.length}</strong><span>Salary signals</span></article>`;
+  const counters = [['jobs', state.publicJobs.length, 'Live jobs'], ['companies', companies.length, 'Companies'], ['reviews', state.publicReviews.length, 'Reviews'], ['salaries', state.publicSalarySignals.length, 'Salary signals']];
+  $('#market-summary').innerHTML = counters.map(([tab, count, label]) => `<button type="button" class="${state.publicTab === tab ? 'active' : ''}" data-summary-tab="${tab}" aria-pressed="${state.publicTab === tab}"><strong>${count}</strong><span>${label}</span></button>`).join('');
 }
 
 function renderPublicJobsList() {
@@ -920,7 +955,7 @@ function renderPublicJobsList() {
         <p>${job.impactArea ? escapeHtml(job.impactArea) + ' · ' : ''}${moneyLabel(job.salary)}</p>
       </div>
       <div class="row-actions"><button class="button subtle" data-save-job="${job.id}">${saved.has(job.id) ? 'Saved' : 'Save'}</button><button class="button primary" data-job-detail="${job.id}">View details</button></div>
-    </article>`).join('') + paginationControls('publicJobs', page) : `<div class="empty-public"><strong>No roles match these filters.</strong><p>Try a different sector, location, or keyword.</p></div>`;
+    </article>`).join('') + paginationControls('publicJobs', page) : marketplaceEmptyState('jobs');
   $$('[data-job-detail]').forEach((button) => button.addEventListener('click', () => openJobDetail(button.dataset.jobDetail)));
   $$('[data-save-job]').forEach((button) => button.addEventListener('click', () => toggleSaveJob(button.dataset.saveJob, true)));
   bindPagination($('#public-market'));
@@ -937,7 +972,7 @@ function renderCompaniesList() {
         <p>${company.locations.map(escapeHtml).join(' · ') || 'Location not listed'}</p>
         <div class="company-metrics"><span>${company.jobs} open role${company.jobs === 1 ? '' : 's'}</span><span>${company.reviews.length} review${company.reviews.length === 1 ? '' : 's'}</span><span>${company.rating ? `${ratingStars(company.rating)} ${company.rating.toFixed(1)}` : 'No rating yet'}</span></div>
       </div>
-    </article>`).join('') + paginationControls('publicJobs', page) : `<div class="empty-public"><strong>No companies match these filters.</strong><p>Company profiles appear as employers post jobs and candidates add reviews.</p></div>`;
+    </article>`).join('') + paginationControls('publicJobs', page) : marketplaceEmptyState('companies');
   bindPagination($('#public-market'));
 }
 
@@ -951,14 +986,14 @@ function renderReviewsList() {
       <p>${review.reviewer?.displayMode === 'linkedin' ? `<a href="${escapeHtml(review.reviewer.linkedin)}" target="_blank" rel="noopener">${escapeHtml(review.reviewer.label)} ↗</a>` : escapeHtml(review.reviewer?.label || 'Anonymous verified reviewer')} · verified ${escapeHtml(review.reviewer?.verifiedDomain || 'email')}</p>
       <div class="review-grid"><div><small>Pros</small><p>${escapeHtml(review.pros)}</p></div><div><small>Watch-outs</small><p>${escapeHtml(review.cons)}</p></div></div>
       ${review.advice ? `<p class="advice"><strong>Advice:</strong> ${escapeHtml(review.advice)}</p>` : ''}
-    </article>`).join('') + paginationControls('publicReviews', page) : `<div class="empty-public"><strong>No reviews match these filters.</strong><p>Add the first anonymous review for this sector.</p></div>`;
+    </article>`).join('') + paginationControls('publicReviews', page) : marketplaceEmptyState('reviews');
   bindPagination($('#public-market'));
 }
 
 function renderSalariesList() {
   const signals = state.salaryAggregates.filter(publicMatches);
   const page = paginate(signals, 'publicSalaries');
-  $('#public-market').innerHTML = signals.length ? `<div class="table-wrap"><table><thead><tr><th>Company</th><th>Role</th><th>Sector</th><th>Location</th><th>Level</th><th>Aggregated range</th><th>Signals</th></tr></thead><tbody>${page.items.map((signal) => `<tr><td>${escapeHtml(signal.company)}</td><td>${escapeHtml(signal.role)}</td><td>${escapeHtml(signal.sector)}</td><td>${escapeHtml(signal.location)}</td><td>${escapeHtml(signal.level)}</td><td>${salaryRange(signal)}</td><td>${signal.count}</td></tr>`).join('')}</tbody></table></div>${paginationControls('publicSalaries', page)}` : `<div class="empty-public"><strong>No salary signals match these filters.</strong><p>Submit a signal to help candidates understand real compensation ranges without exposing private data.</p></div>`;
+  $('#public-market').innerHTML = signals.length ? `<div class="table-wrap"><table><thead><tr><th>Company</th><th>Role</th><th>Sector</th><th>Location</th><th>Level</th><th>Aggregated range</th><th>Signals</th></tr></thead><tbody>${page.items.map((signal) => `<tr><td>${escapeHtml(signal.company)}</td><td>${escapeHtml(signal.role)}</td><td>${escapeHtml(signal.sector)}</td><td>${escapeHtml(signal.location)}</td><td>${escapeHtml(signal.level)}</td><td>${salaryRange(signal)}</td><td>${signal.count}</td></tr>`).join('')}</tbody></table></div>${paginationControls('publicSalaries', page)}` : marketplaceEmptyState('salaries');
   bindPagination($('#public-market'));
 }
 
@@ -983,6 +1018,35 @@ function openReviewDialog(review = null) {
   $('#review-dialog .dialog-header h2').textContent = review ? 'Edit workplace insight' : 'Share workplace insight';
   $('#review-form [type="submit"]').textContent = review ? 'Save review' : 'Publish review';
   $('#review-dialog').showModal();
+}
+
+function startReview() {
+  if (!state.candidate && !state.user) {
+    toast('Sign in before writing a verified review', true);
+    openCandidateAuth('login');
+    return;
+  }
+  openReviewDialog();
+}
+
+function startSalarySignal() {
+  if (!state.candidate && !state.user) {
+    toast('Sign in before submitting a salary signal', true);
+    openCandidateAuth('login');
+    return;
+  }
+  $('#salary-dialog').showModal();
+}
+
+function openJobAlerts() {
+  const form = $('#support-form');
+  if (form) {
+    form.elements.type.value = 'feature';
+    form.elements.priority.value = 'normal';
+    form.elements.subject.value = 'Join job alerts waitlist';
+    form.elements.message.value = 'I would like to receive curated job alerts for relevant impact roles.';
+  }
+  $('#support-dialog').showModal();
 }
 
 async function loadPublicJobs() {
@@ -1468,31 +1532,19 @@ $('#pricing-support')?.addEventListener('click', () => $('#support-dialog').show
 $('#pricing-partnership')?.addEventListener('click', () => $('#support-dialog').showModal());
 $('#candidate-browse-jobs').addEventListener('click', openJobs);
 $('#employer-login-button').addEventListener('click', () => openAuth('login'));
-$('#add-review-button').addEventListener('click', () => {
-  if (!state.candidate && !state.user) {
-    toast('Sign in before writing a verified review', true);
-    openCandidateAuth('login');
-    return;
-  }
-  openReviewDialog();
+$('#add-review-button').addEventListener('click', startReview);
+$('#add-salary-button').addEventListener('click', startSalarySignal);
+$('#join-job-alerts')?.addEventListener('click', openJobAlerts);
+$('#market-summary').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-summary-tab]');
+  if (!button) return;
+  state.publicTab = button.dataset.summaryTab;
+  resetPage(pageKeyForPublic());
+  renderMarketplace();
 });
-$('#add-salary-button').addEventListener('click', () => {
-  if (!state.candidate && !state.user) {
-    toast('Sign in before submitting a salary signal', true);
-    openCandidateAuth('login');
-    return;
-  }
-  $('#salary-dialog').showModal();
-});
-$('#join-job-alerts')?.addEventListener('click', () => {
-  const form = $('#support-form');
-  if (form) {
-    form.elements.type.value = 'feature';
-    form.elements.priority.value = 'normal';
-    form.elements.subject.value = 'Join job alerts waitlist';
-    form.elements.message.value = 'I would like to receive curated job alerts for relevant impact roles.';
-  }
-  $('#support-dialog').showModal();
+$('#public-market').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-empty-action]');
+  if (button) runEmptyStateAction(button.dataset.emptyAction);
 });
 $('#refresh-market-button').addEventListener('click', () => loadPublicJobs());
 $('#new-job-button').addEventListener('click', () => openJobDialog());
