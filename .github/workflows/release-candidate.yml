@@ -47,6 +47,7 @@ jobs:
           SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
           STORAGE_DRIVER: supabase
           NEXT_PUBLIC_APP_URL: http://127.0.0.1:3000
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
       - name: Upload Playwright report
         if: always()
@@ -55,4 +56,3 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 14
-
