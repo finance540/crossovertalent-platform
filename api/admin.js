@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { EMPLOYER_STATUSES, IMPACT_SECTORS, JOB_STATUSES, MODERATION_STATUSES, allowAdminSelfRegistration, appUrl, assertSameOrigin, auditLog, clearSessionCookie, createSession, employerStatus, ensureStorage, forbidden, hashPassword, jobLifecycleStatus, listRecords, methodNotAllowed, moderationStatus, passwordResetEmail, productEvent, rateLimit, readRecord, readSession, resolveJobExpiry, sendEmail, serverError, setSecurityHeaders, setSessionCookie, stableHash, tooManyRequests, verificationEmail, verificationLinkPayload, verifyPassword, writeRecord } from './_lib.js';
+import { EMPLOYER_STATUSES, IMPACT_SECTORS, JOB_STATUSES, MODERATION_STATUSES, allowAdminSelfRegistration, appUrl, assertSameOrigin, auditLog, clearSessionCookie, createSession, employerStatus, ensureStorage, forbidden, hashPassword, isPublicJob, jobLifecycleStatus, listRecords, methodNotAllowed, moderationStatus, passwordResetEmail, productEvent, rateLimit, readRecord, readSession, resolveJobExpiry, sendEmail, serverError, setSecurityHeaders, setSessionCookie, stableHash, tooManyRequests, verificationEmail, verificationLinkPayload, verifyPassword, writeRecord } from './_lib.js';
+import { notifyPublishedJob } from './_job-alerts.js';
 
 function clean(value = '') {
   return String(value).trim();
@@ -209,6 +210,7 @@ async function saveContent(admin, { type, id = '', fields = {}, moderation_statu
   const record = await buildContent(type, fields || {}, existing, admin);
   record.moderation_status = requestedStatus || (existing ? moderationStatus(existing) : 'pending');
   await writeRecord(recordPath(type, record), record, true);
+  if (type === 'job' && !isPublicJob(existing) && isPublicJob(record)) await notifyPublishedJob(record).catch((error) => console.error('job_alert_dispatch_failed', error.message));
   await auditLog(existing ? 'admin.content_updated' : 'admin.content_created', { actorEmail: admin.email, entityType: type, entityId: recordId(type, record), metadata: { moderation_status: record.moderation_status } });
   return record;
 }
@@ -220,6 +222,7 @@ async function moderateContent(admin, { type, id = '', moderation_status: status
   if (!record) throw new ContentError('Content not found', 404);
   const updated = { ...record, moderation_status: status, moderatedBy: admin.email, moderated_at: new Date().toISOString(), updated_at: new Date().toISOString() };
   await writeRecord(path, updated, true);
+  if (type === 'job' && !isPublicJob(record) && isPublicJob(updated)) await notifyPublishedJob(updated).catch((error) => console.error('job_alert_dispatch_failed', error.message));
   await auditLog('admin.content_moderated', { actorEmail: admin.email, entityType: type, entityId: clean(id), metadata: { moderation_status: status } });
   await productEvent('content_moderated', { actorEmail: admin.email, entityType: type, entityId: clean(id), metadata: { moderation_status: status } });
   return updated;
@@ -345,7 +348,9 @@ export default async function handler(request, response) {
         const jobs = (await listRecords('companies/')).filter((item) => item.recordType === 'job' && item.id === id);
         if (!jobs.length) return response.status(404).json({ error: 'Job not found' });
         const job = jobs[0];
-        await writeRecord(`companies/${job.companyId}/jobs/${job.id}.json`, { ...job, status, moderatedBy: admin.email, updated_at: new Date().toISOString() }, true);
+        const updated = { ...job, status, moderatedBy: admin.email, updated_at: new Date().toISOString() };
+        await writeRecord(`companies/${job.companyId}/jobs/${job.id}.json`, updated, true);
+        if (!isPublicJob(job) && isPublicJob(updated)) await notifyPublishedJob(updated).catch((error) => console.error('job_alert_dispatch_failed', error.message));
         await auditLog('admin.job_moderated', { actorEmail: admin.email, entityType: 'job', entityId: id, metadata: { status } });
         await productEvent('job_moderated', { actorEmail: admin.email, entityType: 'job', entityId: id, metadata: { status, companyId: job.companyId } });
         return response.json({ ok: true });

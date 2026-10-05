@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { IMPACT_SECTORS, assertSameOrigin, deleteRecord, ensureStorage, forbidden, hiddenEmployerCompanyIds, isJobExpired, isPublicJob, jobPublishedAt, listRecords, methodNotAllowed, productEvent, rateLimit, readRecord, requireApprovedEmployerSession, resolveJobExpiry, serverError, setSecurityHeaders, tooManyRequests, writeRecord } from './_lib.js';
 import { companyPublishAllowance, billingEnforced } from './_billing.js';
 import { createJobCheckoutSession, stripeConfigured } from './payments.js';
+import { notifyPublishedJob } from './_job-alerts.js';
 
 async function publishJob(job, session, pathname, response, statusCode) {
   if (billingEnforced() && !stripeConfigured()) return response.status(503).json({ error: 'Stripe test-mode billing must be configured before publishing jobs', billingRequired: true });
@@ -20,10 +21,12 @@ async function publishJob(job, session, pathname, response, statusCode) {
     }
   }
 
+  const previouslyPublic = isPublicJob(job);
   const now = new Date().toISOString();
   const published = { ...job, status: 'active', payment_status: paymentStatus, published_at: job.published_at || now, updated_at: now };
   await writeRecord(pathname, published, true);
   await productEvent('job_published', { actorEmail: session.email, entityType: 'job', entityId: job.id, metadata: { companyId: session.companyId, sector: job.sector, location: job.location, payment: paymentStatus } });
+  if (!previouslyPublic && isPublicJob(published)) await notifyPublishedJob(published).catch((error) => console.error('job_alert_dispatch_failed', error.message));
   return response.status(statusCode).json({ job: published, subscriptionUsed: paymentStatus === 'subscription' });
 }
 
@@ -84,6 +87,7 @@ export default async function handler(request, response) {
       if (expiry.error) return response.status(400).json({ error: expiry.error });
       const updated = { ...job, schemaVersion: 2, expires_at: expiry.expires_at, title: title.trim(), department: department.trim(), location: location.trim(), type: type.trim(), salary: salary.trim(), sector: sector.trim(), experience: experience.trim(), impactArea: impactArea.trim(), description: description.trim(), sourceAttachment, sourceText: sourceText.trim(), aiInputs, updated_at: new Date().toISOString() };
       await writeRecord(pathname, updated, true);
+      if (!isPublicJob(job) && isPublicJob(updated)) await notifyPublishedJob(updated).catch((error) => console.error('job_alert_dispatch_failed', error.message));
       return response.json({ job: updated });
     }
     if (request.method === 'DELETE') {
