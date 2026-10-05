@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { IMPACT_SECTORS, appUrl, deleteRecord, isPublicJob, listRecords, productEvent, readRecord, sendEmail, stableHash, writeRecord } from './_lib.js';
+import { IMPACT_SECTORS, appUrl, deleteRecord, hiddenEmployerCompanyIds, isPublicJob, listRecords, productEvent, readRecord, sendEmail, stableHash, writeRecord } from './_lib.js';
 
 export const JOB_ALERT_LEVELS = ['Associate', 'Manager', 'Senior Manager', 'Director', 'Executive'];
 export const JOB_ALERT_FREQUENCIES = ['instant', 'daily', 'weekly'];
@@ -10,6 +10,7 @@ function clean(value = '') {
 
 function filterValues(value, allowedValues, label) {
   const values = Array.isArray(value) ? value : [];
+  if (values.length > 20 || values.some((item) => typeof item !== 'string' || item.length > 120)) throw new TypeError(`Choose up to 20 valid ${label}`);
   const normalized = [...new Set(values.map((item) => clean(item)).filter(Boolean))];
   if (normalized.length > 20 || normalized.some((item) => !allowedValues.includes(item))) {
     throw new TypeError(`Choose up to 20 valid ${label}`);
@@ -18,7 +19,9 @@ function filterValues(value, allowedValues, label) {
 }
 
 function locationValues(value) {
+  if (typeof value === 'string' && value.length > 20 * 121) throw new TypeError('Enter up to 20 locations, each no longer than 120 characters');
   const values = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : [];
+  if (values.length > 20 || values.some((item) => typeof item !== 'string' || item.length > 120)) throw new TypeError('Enter up to 20 locations, each no longer than 120 characters');
   const normalized = [...new Set(values.map((item) => clean(item)).filter(Boolean))];
   if (normalized.length > 20 || normalized.some((item) => item.length > 120)) {
     throw new TypeError('Enter up to 20 locations, each no longer than 120 characters');
@@ -124,7 +127,8 @@ async function deliverJobs(candidate, jobs, digest = false) {
 
 export async function notifyPublishedJob(job) {
   if (!isPublicJob(job)) return { matched: 0, sent: 0 };
-  const candidates = await listRecords('candidates/');
+  const [candidates, accounts] = await Promise.all([listRecords('candidates/'), listRecords('accounts/')]);
+  if (hiddenEmployerCompanyIds(accounts).has(job.companyId)) return { matched: 0, sent: 0 };
   const matches = candidates.filter((candidate) => candidate.emailVerified && !candidate.disabled && jobAlertMatches(job, candidate.jobAlerts));
   const queued = await Promise.all(matches.map(async (candidate) => {
     const sent = await readRecord(deliveryPath(candidate.id, job.id));
@@ -139,6 +143,45 @@ export async function notifyPublishedJob(job) {
   return { matched: matches.length, sent: results.filter((result) => result.status === 'fulfilled' && result.value).length };
 }
 
+async function advanceDigestSchedule(candidate, now) {
+  const pathname = `candidates/${stableHash(candidate.email)}.json`;
+  const current = await readRecord(pathname);
+  const alerts = current?.jobAlerts;
+  if (!current || !alerts?.active || !['daily', 'weekly'].includes(alerts.frequency)) return;
+  const jobAlerts = { ...alerts, nextDigestAt: nextJobAlertDigestAt(alerts.frequency, now), updatedAt: now.toISOString() };
+  await writeRecord(pathname, { ...current, jobAlerts, updatedAt: now.toISOString() }, true);
+}
+
+async function dispatchCandidateAlerts(candidate, items, now) {
+  const alerts = candidate.jobAlerts || {};
+  if (!alerts.active || !candidate.emailVerified || candidate.disabled) {
+    await clearQueuedJobAlerts(candidate.id);
+    return { sent: 0, discarded: items.length };
+  }
+  const eligibleJobs = [];
+  let discarded = 0;
+  for (const item of items) {
+    const job = await readRecord(`companies/${item.companyId}/jobs/${item.jobId}.json`);
+    if (!job || !isPublicJob(job) || !jobAlertMatches(job, alerts)) {
+      await deleteRecord(queuePath(candidate.id, item.jobId));
+      discarded += 1;
+    } else if (!(await readRecord(deliveryPath(candidate.id, job.id)))) {
+      eligibleJobs.push(job);
+    } else {
+      await deleteRecord(queuePath(candidate.id, job.id));
+    }
+  }
+  if (alerts.frequency === 'instant') {
+    const results = await Promise.allSettled(eligibleJobs.map((job) => deliverJobs(candidate, [job])));
+    return { sent: results.filter((result) => result.status === 'fulfilled' && result.value).length, discarded };
+  }
+  if (!['daily', 'weekly'].includes(alerts.frequency) || !alerts.nextDigestAt || Date.parse(alerts.nextDigestAt) > now.getTime()) return { sent: 0, discarded };
+  let sent = 0;
+  if (eligibleJobs.length && await deliverJobs(candidate, eligibleJobs, true)) sent = eligibleJobs.length;
+  await advanceDigestSchedule(candidate, now);
+  return { sent, discarded };
+}
+
 export async function dispatchQueuedJobAlerts(now = new Date()) {
   const [candidates, queued] = await Promise.all([listRecords('candidates/'), listRecords('job-alert-queue/')]);
   const candidateById = new Map(candidates.map((candidate) => [candidate.id, candidate]));
@@ -150,39 +193,13 @@ export async function dispatchQueuedJobAlerts(now = new Date()) {
 
   let sent = 0;
   let discarded = 0;
-  for (const candidate of candidates) {
-    const items = queuesByCandidate.get(candidate.id) || [];
-    const alerts = candidate.jobAlerts || {};
-    if (!alerts.active || !candidate.emailVerified || candidate.disabled) {
-      await clearQueuedJobAlerts(candidate.id);
-      discarded += items.length;
-      continue;
-    }
-    const eligibleJobs = [];
-    for (const item of items) {
-      const job = await readRecord(`companies/${item.companyId}/jobs/${item.jobId}.json`);
-      if (!job || !isPublicJob(job) || !jobAlertMatches(job, alerts)) {
-        await deleteRecord(queuePath(candidate.id, item.jobId));
-        discarded += 1;
-      } else if (!(await readRecord(deliveryPath(candidate.id, job.id)))) {
-        eligibleJobs.push(job);
-      } else {
-        await deleteRecord(queuePath(candidate.id, item.jobId));
-      }
-    }
-    if (alerts.frequency === 'instant') {
-      const results = await Promise.allSettled(eligibleJobs.map((job) => deliverJobs(candidate, [job])));
-      sent += results.filter((result) => result.status === 'fulfilled' && result.value).length;
-      continue;
-    }
-    if (!['daily', 'weekly'].includes(alerts.frequency) || !alerts.nextDigestAt || Date.parse(alerts.nextDigestAt) > now.getTime()) continue;
-    if (eligibleJobs.length && await deliverJobs(candidate, eligibleJobs, true)) {
-      sent += eligibleJobs.length;
-      const jobAlerts = { ...alerts, nextDigestAt: nextJobAlertDigestAt(alerts.frequency, now), updatedAt: now.toISOString() };
-      await writeRecord(`candidates/${stableHash(candidate.email)}.json`, { ...candidate, jobAlerts, updatedAt: now.toISOString() }, true);
-    } else if (!eligibleJobs.length) {
-      const jobAlerts = { ...alerts, nextDigestAt: nextJobAlertDigestAt(alerts.frequency, now), updatedAt: now.toISOString() };
-      await writeRecord(`candidates/${stableHash(candidate.email)}.json`, { ...candidate, jobAlerts, updatedAt: now.toISOString() }, true);
+  const results = await Promise.allSettled(candidates.map((candidate) => dispatchCandidateAlerts(candidate, queuesByCandidate.get(candidate.id) || [], now)));
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      sent += result.value.sent;
+      discarded += result.value.discarded;
+    } else {
+      console.error('job_alert_candidate_dispatch_failed', result.reason?.message || result.reason);
     }
   }
 

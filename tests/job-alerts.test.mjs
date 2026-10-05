@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { jobAlertMatches, nextJobAlertDigestAt, notifyPublishedJob, publicJobAlertSettings } from '../api/_job-alerts.js';
+import { dispatchQueuedJobAlerts, jobAlertMatches, nextJobAlertDigestAt, normalizeJobAlertPreferences, notifyPublishedJob, publicJobAlertSettings, updateJobAlertPreferences } from '../api/_job-alerts.js';
 import { createSession, readRecord, stableHash, writeRecord } from '../api/_lib.js';
 import jobAlertsHandler from '../api/job-alerts.js';
 import jobsHandler from '../api/jobs.js';
@@ -29,6 +29,8 @@ test('job alert filters match sector, location, and seniority without changing p
   assert.equal(jobAlertMatches(job, { ...alerts, levels: ['Associate'] }), false);
   assert.equal(jobAlertMatches(job, { ...alerts, active: false }), false);
   assert.deepEqual(publicJobAlertSettings({ ...alerts, unsubscribeToken: 'private' }), { active: true, sectors: ['Climate'], locations: ['Tokyo'], levels: ['Director'], frequency: 'instant' });
+  assert.throws(() => normalizeJobAlertPreferences({ locations: Array.from({ length: 21 }, () => 'Tokyo') }), /up to 20 locations/);
+  assert.throws(() => normalizeJobAlertPreferences({ sectors: Array.from({ length: 21 }, () => 'Climate') }), /up to 20 valid sectors/);
 });
 
 test('daily and weekly alert delivery is scheduled for the next 09:00 UTC slot', () => {
@@ -128,7 +130,7 @@ test('publishing a matching job sends an instant alert, queues a digest, and ski
   const otherEmail = `other-${randomUUID()}@example.test`;
   const sent = [];
   let employerSession;
-  const request = (body) => ({ method: 'POST', query: {}, body, headers: { cookie: `rb_session=${employerSession}`, host: 'alerts.test', origin: 'https://alerts.test' } });
+  const request = (body, method = 'POST') => ({ method, query: {}, body, headers: { cookie: `rb_session=${employerSession}`, host: 'alerts.test', origin: 'https://alerts.test' } });
 
   try {
     process.env.NODE_ENV = 'test';
@@ -168,6 +170,19 @@ test('publishing a matching job sends an instant alert, queues a digest, and ski
     assert.equal(duplicate.sent, 0);
     assert.equal(sent.length, 1);
 
+    const renewedEmail = `renewed-${randomUUID()}@example.test`;
+    const renewedCandidate = { id: randomUUID(), role: 'candidate', email: renewedEmail, emailHash: stableHash(renewedEmail), emailVerified: true, disabled: false, jobAlerts: { active: true, sectors: ['Climate'], locations: ['Tokyo'], levels: ['Director'], frequency: 'instant', unsubscribeToken: randomUUID() } };
+    await writeRecord(`candidates/${renewedCandidate.emailHash}.json`, renewedCandidate);
+    await writeRecord(`companies/${companyId}/jobs/${job.id}.json`, { ...job, expires_at: new Date(Date.now() - 60_000).toISOString() }, true);
+    const renewed = response();
+    await jobsHandler(request({ id: job.id, title: job.title, department: job.department, location: job.location, type: job.type, salary: job.salary, sector: job.sector, experience: job.experience, impactArea: job.impactArea, description: job.description, expiresAt: new Date(Date.now() + 86_400_000).toISOString().slice(0, 10) }, 'PATCH'), renewed);
+    assert.equal(renewed.statusCode, 200);
+    assert.ok(sent.some((email) => email.to[0] === renewedEmail));
+
+    await writeRecord(`accounts/${stableHash(employerEmail)}.json`, { recordType: 'account', id: randomUUID(), role: 'employer', email: employerEmail, company: 'Alert Test Co', companyId, employer_status: 'approved', disabled: true, createdAt: new Date().toISOString() }, true);
+    const hidden = await notifyPublishedJob({ ...job, id: randomUUID(), published_at: new Date().toISOString() });
+    assert.deepEqual(hidden, { matched: 0, sent: 0 });
+
     const rejectedCron = response();
     await jobAlertsHandler({ method: 'GET', query: { route: 'dispatch' }, headers: { authorization: 'Bearer wrong-secret', host: 'alerts.test' } }, rejectedCron);
     assert.equal(rejectedCron.statusCode, 401);
@@ -178,10 +193,71 @@ test('publishing a matching job sends an instant alert, queues a digest, and ski
     await jobAlertsHandler({ method: 'GET', query: { route: 'dispatch' }, headers: { authorization: 'Bearer job-alert-cron-test-secret', host: 'alerts.test' } }, cron);
     assert.equal(cron.statusCode, 200);
     assert.equal(cron.data.sent, 1);
-    assert.equal(sent.length, 2);
-    assert.equal(sent[1].to[0], digestEmail);
-    assert.match(sent[1].subject, /daily/);
+    assert.equal(sent.length, 3);
+    assert.equal(sent[2].to[0], digestEmail);
+    assert.match(sent[2].subject, /daily/);
     assert.equal(await readRecord(`job-alert-queue/${digest.id}/${job.id}.json`), null);
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const key of keys) {
+      if (originalEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = originalEnv[key];
+    }
+    await rm(storage, { recursive: true, force: true });
+  }
+});
+
+test('digest dispatches candidates concurrently and preserves a pause during delivery', async () => {
+  const storage = await mkdtemp(path.join(tmpdir(), 'crossover-job-alert-concurrency-'));
+  const keys = ['NODE_ENV', 'VERCEL_ENV', 'STORAGE_DRIVER', 'LOCAL_STORAGE_DIR', 'SESSION_SECRET', 'RESEND_API_KEY', 'NEXT_PUBLIC_APP_URL'];
+  const originalEnv = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  const originalFetch = globalThis.fetch;
+  const companyId = randomUUID();
+  const jobId = randomUUID();
+  const now = new Date();
+  const candidateEmail = (name) => `${name}-${randomUUID()}@example.test`;
+  const firstEmail = candidateEmail('first');
+  const secondEmail = candidateEmail('second');
+  const first = { id: randomUUID(), role: 'candidate', email: firstEmail, emailHash: stableHash(firstEmail), emailVerified: true, disabled: false, jobAlerts: { active: true, sectors: ['Climate'], locations: [], levels: [], frequency: 'daily', nextDigestAt: new Date(now.getTime() - 60_000).toISOString(), unsubscribeToken: randomUUID() } };
+  const second = { id: randomUUID(), role: 'candidate', email: secondEmail, emailHash: stableHash(secondEmail), emailVerified: true, disabled: false, jobAlerts: { active: true, sectors: ['Climate'], locations: [], levels: [], frequency: 'daily', nextDigestAt: new Date(now.getTime() - 60_000).toISOString(), unsubscribeToken: randomUUID() } };
+  let inFlight = 0;
+  let maxInFlight = 0;
+  let paused = false;
+
+  try {
+    process.env.NODE_ENV = 'test';
+    process.env.VERCEL_ENV = 'preview';
+    process.env.STORAGE_DRIVER = 'local';
+    process.env.LOCAL_STORAGE_DIR = storage;
+    process.env.SESSION_SECRET = 'job-alert-concurrency-test-secret';
+    process.env.RESEND_API_KEY = 're_test_local_fixture';
+    process.env.NEXT_PUBLIC_APP_URL = 'https://alerts.test';
+    globalThis.fetch = async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      if (!paused) {
+        paused = true;
+        await updateJobAlertPreferences(first, { enabled: false });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      inFlight -= 1;
+      return { ok: true, status: 200, json: async () => ({ id: randomUUID() }) };
+    };
+
+    const job = { recordType: 'job', schemaVersion: 2, id: jobId, companyId, company: 'Alert Test Co', title: 'Climate Director', location: 'Tokyo', sector: 'Climate', experience: 'Director', status: 'active', moderation_status: 'approved', expires_at: new Date(now.getTime() + 86_400_000).toISOString() };
+    await writeRecord(`candidates/${first.emailHash}.json`, first);
+    await writeRecord(`candidates/${second.emailHash}.json`, second);
+    await writeRecord(`companies/${companyId}/jobs/${jobId}.json`, job);
+    for (const candidate of [first, second]) await writeRecord(`job-alert-queue/${candidate.id}/${jobId}.json`, { candidateId: candidate.id, companyId, jobId });
+
+    const result = await dispatchQueuedJobAlerts(now);
+    assert.equal(result.sent, 2);
+    assert.equal(maxInFlight, 2);
+    const pausedCandidate = await readRecord(`candidates/${first.emailHash}.json`);
+    assert.equal(pausedCandidate.jobAlerts.active, false);
+    assert.equal(pausedCandidate.jobAlerts.nextDigestAt, '');
+    const deliveredCandidate = await readRecord(`candidates/${second.emailHash}.json`);
+    assert.notEqual(deliveredCandidate.jobAlerts.nextDigestAt, second.jobAlerts.nextDigestAt);
   } finally {
     globalThis.fetch = originalFetch;
     for (const key of keys) {
